@@ -1,22 +1,19 @@
 #!/usr/bin/env python3
-"""Ingest das fontes do CERT r4.2 no OpenSearch (caminho exploratorio opcional).
+"""Ingest the CERT r4.2 sources into OpenSearch (optional exploratory path).
 
-Por PADRAO ingere o dataset INTEIRO. As fontes de atividade (logon, device, file,
-email) e o http.csv sao lidas em STREAMING (blocos), indexando bloco a bloco via
-API _bulk, para nao carregar os arquivos grandes (http ~14 GB) na memoria.
+By DEFAULT it ingests the ENTIRE dataset. The activity sources (logon, device,
+file, email) and http.csv are read in STREAMING mode (chunks) and indexed batch
+by batch through the _bulk API, so the large files (http ~14 GB) are never
+loaded into memory.
 
-Limites sao OPCIONAIS: passe --limite N (fontes de atividade) e/ou --http-limite N
-para restringir; sem eles, vai tudo.
-
-Cria um indice por fonte: th-logon, th-device, th-file, th-email, th-http.
-Usa so a stdlib (urllib) para o transporte HTTP.
+Creates one index per source: cert-logon, cert-device, cert-file, cert-email,
+cert-http. Uses only the stdlib (urllib) for HTTP transport.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
-import io
 import json
 import os
 import sys
@@ -27,42 +24,42 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _DATA = _REPO_ROOT / "data" / "r4.2"
-_INDEX_PREFIX = "th-"
+_INDEX_PREFIX = "cert-"
 _DEFAULT = "localhost:9200"
 _TIMEOUT = 120
 
-# Fontes a ingerir e suas colunas (schema r4.2).
-FONTES = {
+# Sources to ingest and their columns (r4.2 schema).
+SOURCES = {
     "logon": ["id", "date", "user", "pc", "activity"],
     "device": ["id", "date", "user", "pc", "activity"],
     "file": ["id", "date", "user", "pc", "filename", "content"],
     "email": ["id", "date", "user", "pc", "to", "cc", "bcc", "from", "size", "attachments", "content"],
     "http": ["id", "date", "user", "pc", "url", "content"],
 }
-# Colunas de texto longo que NAO vamos indexar (economiza espaco/tempo): o corpo
-# sintetico de file/email/http e irrelevante para a exploracao dos sinais.
-DESCARTAR = {"content"}
+# Long-text columns we do NOT index (saves space/time): the synthetic body of
+# file/email/http is irrelevant for exploring the signals.
+DISCARD = {"content"}
 
 
-def _data_iso(valor: str) -> str | None:
-    """Converte 'MM/DD/YYYY HH:MM:SS' do CERT para ISO-8601; None se vazio/invalido."""
-    valor = (valor or "").strip()
-    if not valor:
+def _iso_date(value: str) -> str | None:
+    """Convert the CERT 'MM/DD/YYYY HH:MM:SS' date to ISO-8601; None if empty/invalid."""
+    value = (value or "").strip()
+    if not value:
         return None
     try:
-        return datetime.strptime(valor, "%m/%d/%Y %H:%M:%S").isoformat()
+        return datetime.strptime(value, "%m/%d/%Y %H:%M:%S").isoformat()
     except ValueError:
         return None
 
 
-def _norm(h: str) -> str:
+def _normalize_host(h: str) -> str:
     h = h.strip()
     if not h.startswith(("http://", "https://")):
         h = "http://" + h
     return h.rstrip("/")
 
 
-def _req(method, url, *, data=None, content_type=None):
+def _request(method, url, *, data=None, content_type=None):
     r = urllib.request.Request(url, data=data, method=method)
     if content_type:
         r.add_header("Content-Type", content_type)
@@ -70,133 +67,125 @@ def _req(method, url, *, data=None, content_type=None):
         return resp.status, resp.read()
 
 
-def _criar_indice(base, indice, colunas):
-    # Mapping explicito: `date` como tipo date (ISO-8601); demais campos como
-    # keyword (bom para filtros exatos por user/pc/activity/url/filename).
+def _create_index(base, index, columns):
+    # Explicit mapping: `date` as a date type (ISO-8601); other fields as keyword
+    # (good for exact filters on user/pc/activity/url/filename).
     props = {}
-    for c in colunas:
-        if c in DESCARTAR:
+    for c in columns:
+        if c in DISCARD:
             continue
         if c == "date":
             props[c] = {"type": "date"}
         else:
             props[c] = {"type": "keyword"}
-    corpo = json.dumps({
+    body = json.dumps({
         "settings": {"number_of_replicas": 0, "refresh_interval": "-1"},
         "mappings": {"properties": props},
     }).encode("utf-8")
     try:
-        _req("PUT", base + "/" + indice, data=corpo, content_type="application/json")
+        _request("PUT", base + "/" + index, data=body, content_type="application/json")
     except urllib.error.HTTPError as e:
-        if e.code != 400:  # 400 = index ja existe
+        if e.code != 400:  # 400 = index already exists
             raise
 
 
-def _finalizar_indice(base, indice):
-    # Religa o refresh e forca um flush para deixar os docs pesquisaveis.
-    corpo = json.dumps({"index": {"refresh_interval": "1s"}}).encode("utf-8")
+def _finalize_index(base, index):
+    # Turn refresh back on and force a refresh so documents become searchable.
+    body = json.dumps({"index": {"refresh_interval": "1s"}}).encode("utf-8")
     try:
-        _req("PUT", base + "/" + indice + "/_settings", data=corpo, content_type="application/json")
-        _req("POST", base + "/" + indice + "/_refresh")
+        _request("PUT", base + "/" + index + "/_settings", data=body, content_type="application/json")
+        _request("POST", base + "/" + index + "/_refresh")
     except urllib.error.URLError:
         pass
 
 
-def _enviar_bulk(base, indice, linhas_ndjson):
-    corpo = ("".join(linhas_ndjson)).encode("utf-8")
-    status, resp = _req("POST", base + "/_bulk", data=corpo,
-                        content_type="application/x-ndjson")
+def _send_bulk(base, index, ndjson_lines):
+    body = ("".join(ndjson_lines)).encode("utf-8")
+    _status, resp = _request("POST", base + "/_bulk", data=body,
+                             content_type="application/x-ndjson")
     payload = json.loads(resp)
     if payload.get("errors"):
         for item in payload.get("items", []):
-            acao = next(iter(item.values()))
-            if acao.get("error"):
-                raise RuntimeError(f"OpenSearch rejeitou doc em '{indice}': {acao['error']}")
-    return
+            action = next(iter(item.values()))
+            if action.get("error"):
+                raise RuntimeError(f"OpenSearch rejected a document in '{index}': {action['error']}")
 
 
-def _indexar_streaming(base, nome, colunas, caminho, *, limite=None, lote=10000):
-    indice = _INDEX_PREFIX + nome
-    _criar_indice(base, indice, colunas)
-    manter = [c for c in colunas if c not in DESCARTAR]
-    action = json.dumps({"index": {"_index": indice}}) + "\n"
+def _index_streaming(base, name, columns, path, *, batch=10000):
+    index = _INDEX_PREFIX + name
+    _create_index(base, index, columns)
+    keep = [c for c in columns if c not in DISCARD]
+    default_meta = json.dumps({"index": {"_index": index}}) + "\n"
 
     total = 0
     buffer: list[str] = []
-    with open(caminho, "r", encoding="utf-8", newline="") as fh:
+    with open(path, "r", encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
-            doc = {c: row.get(c, "") for c in manter}
+            doc = {c: row.get(c, "") for c in keep}
             if "date" in doc:
-                iso = _data_iso(doc["date"])
+                iso = _iso_date(doc["date"])
                 if iso is not None:
                     doc["date"] = iso
                 else:
                     doc.pop("date", None)
-            # _id deterministico = id unico da linha do CERT. Torna a ingestao
-            # IDEMPOTENTE: re-indexar a mesma linha sobrescreve (nao duplica), o
-            # que deixa a carga retomavel apos qualquer interrupcao.
+            # Deterministic _id = the unique CERT row id. This makes ingestion
+            # IDEMPOTENT: re-indexing the same row overwrites it (no duplicates),
+            # so the load can be resumed after any interruption.
             doc_id = row.get("id") or None
             if doc_id:
-                meta = json.dumps({"index": {"_index": indice, "_id": doc_id}}) + "\n"
+                meta = json.dumps({"index": {"_index": index, "_id": doc_id}}) + "\n"
             else:
-                meta = action
+                meta = default_meta
             buffer.append(meta)
             buffer.append(json.dumps(doc, ensure_ascii=False) + "\n")
             total += 1
-            if len(buffer) >= lote * 2:
-                _enviar_bulk(base, indice, buffer)
+            if len(buffer) >= batch * 2:
+                _send_bulk(base, index, buffer)
                 buffer.clear()
                 if total % 100000 == 0:
-                    print(f"    {nome}: {total} docs...", flush=True)
-            if limite and total >= limite:
-                break
+                    print(f"    {name}: {total} docs...", flush=True)
     if buffer:
-        _enviar_bulk(base, indice, buffer)
-    _finalizar_indice(base, indice)
+        _send_bulk(base, index, buffer)
+    _finalize_index(base, index)
     return total
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="ingest_opensearch.py",
-                                description="Ingere as fontes do r4.2 no OpenSearch (tudo por padrao).")
+                                description="Ingest the r4.2 sources into OpenSearch (the full dataset).")
     p.add_argument("--host", default=os.environ.get("OPENSEARCH_HOST", _DEFAULT))
-    p.add_argument("--limite", type=int, default=None,
-                   help="Opcional: max. de linhas por fonte de atividade (logon/device/file/email).")
-    p.add_argument("--http-limite", type=int, default=None,
-                   help="Opcional: max. de linhas do http.csv. Sem isso, ingere o http inteiro.")
-    p.add_argument("--lote", type=int, default=10000, help="Tamanho do lote _bulk.")
-    p.add_argument("--so", default=None,
-                   help="Opcional: ingerir so uma fonte (ex.: --so http).")
+    p.add_argument("--batch", type=int, default=10000, help="_bulk batch size.")
+    p.add_argument("--only", default=None,
+                   help="Optional: ingest a single source (e.g. --only http).")
     args = p.parse_args(argv)
 
-    base = _norm(args.host)
+    base = _normalize_host(args.host)
     try:
-        _req("GET", base + "/")
+        _request("GET", base + "/")
     except urllib.error.URLError as e:
-        print("ERRO: nao conectou ao OpenSearch em " + base + ": "
-              + str(getattr(e, "reason", e)) + ". Suba com "
+        print("ERROR: could not connect to OpenSearch at " + base + ": "
+              + str(getattr(e, "reason", e)) + ". Start it with "
               + "'docker compose --profile opensearch up -d'.", file=sys.stderr)
         return 1
 
-    alvos = [args.so] if args.so else list(FONTES.keys())
-    print("Conectado a " + base + ". Ingestao (tudo por padrao)...")
-    grande_total = 0
-    for nome in alvos:
-        if nome not in FONTES:
-            print("  fonte desconhecida: " + str(nome), file=sys.stderr)
+    targets = [args.only] if args.only else list(SOURCES.keys())
+    print("Connected to " + base + ". Ingesting (the full dataset)...")
+    grand_total = 0
+    for name in targets:
+        if name not in SOURCES:
+            print("  unknown source: " + str(name), file=sys.stderr)
             return 2
-        caminho = _DATA / (nome + ".csv")
-        if not caminho.is_file():
-            print("  " + nome + ": arquivo ausente (" + str(caminho) + "), pulando.")
+        path = _DATA / (name + ".csv")
+        if not path.is_file():
+            print("  " + name + ": file missing (" + str(path) + "), skipping.")
             continue
-        lim = args.http_limite if nome == "http" else args.limite
-        print("  " + _INDEX_PREFIX + nome + ": indexando" + (f" (limite {lim})" if lim else " TUDO") + "...")
-        n = _indexar_streaming(base, nome, FONTES[nome], caminho, limite=lim, lote=args.lote)
-        grande_total += n
-        print("  " + _INDEX_PREFIX + nome + ": " + str(n) + " docs.")
+        print("  " + _INDEX_PREFIX + name + ": indexing everything...")
+        n = _index_streaming(base, name, SOURCES[name], path, batch=args.batch)
+        grand_total += n
+        print("  " + _INDEX_PREFIX + name + ": " + str(n) + " docs.")
 
-    print("Ingestao concluida: " + str(grande_total) + " docs. Explore em http://localhost:5601")
+    print("Ingestion finished: " + str(grand_total) + " docs. Explore at http://localhost:5601")
     return 0
 
 

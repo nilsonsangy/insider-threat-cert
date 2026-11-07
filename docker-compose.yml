@@ -1,43 +1,43 @@
-# docker-compose do laboratorio threat-hunting.
+# docker-compose for the insider-threat-cert project.
 #
-#   docker compose up -d lab                  -> sobe o laboratorio (Python/pandas)
-#   docker compose run --rm lab ...            -> executa um comando no laboratorio
-#   docker compose --profile opensearch up -d  -> sobe tambem OpenSearch + Dashboards
+#   docker compose up -d app                   -> start the analysis container (Python/pandas)
+#   docker compose run --rm app ...            -> run a command in the container
+#   docker compose --profile opensearch up -d  -> also start OpenSearch + Dashboards
 #
-# Os servicos OpenSearch ficam sob o profile `opensearch`: o `up` padrao NAO os sobe,
-# e os exercicios/testes nao dependem deles.
+# The OpenSearch services live under the `opensearch` profile: the default `up`
+# does NOT start them, and the analyses/tests do not depend on them.
 
 services:
-  # Serviço padrão do laboratório (Python + pandas). Rode comandos com
-  # `docker compose run --rm lab ...`.
-  lab:
+  # Default service (Python + pandas). Run commands with
+  # `docker compose run --rm app ...`.
+  app:
     build:
       context: .
       dockerfile: Dockerfile
-    image: threat-hunting-lab
-    working_dir: /lab
-    # Bind do repositório para desenvolvimento (edições locais refletem no container).
+    image: insider-threat-cert
+    working_dir: /app
+    # Bind mount of the repository for development (local edits show up in the container).
     volumes:
-      - .:/lab
-      # Volume anônimo preserva o .venv da imagem por cima do bind acima.
-      - /lab/.venv
-    # Sem portas: o caminho pandas e offline.
+      - .:/app
+      # Anonymous volume keeps the image's .venv on top of the bind mount above.
+      - /app/.venv
+    # No ports: the pandas path is offline.
     stdin_open: true
     tty: true
 
   # ---------------------------------------------------------------------------
-  # OPCIONAL — explore os CSVs visualmente. Só sobe com `--profile opensearch`.
-  # Configuração mínima de desenvolvimento (single-node, security plugin off).
-  # NÃO use em produção: segurança desabilitada por conveniência de laboratório.
+  # OPTIONAL: explore the CSVs visually. Only starts with `--profile opensearch`.
+  # Minimal development setup (single-node, security plugin off).
+  # DO NOT use in production: security is disabled for local convenience.
   # ---------------------------------------------------------------------------
   opensearch:
     profiles: ["opensearch"]
     image: opensearchproject/opensearch:2.17.1
-    container_name: th-opensearch
+    container_name: cert-opensearch
     environment:
       - discovery.type=single-node
       - bootstrap.memory_lock=true
-      # Desabilita o security plugin para facilitar o acesso local de laboratório.
+      # Disable the security plugin for easy local access.
       - DISABLE_SECURITY_PLUGIN=true
       - DISABLE_INSTALL_DEMO_CONFIG=true
       - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
@@ -56,10 +56,10 @@ services:
   opensearch-dashboards:
     profiles: ["opensearch"]
     image: opensearchproject/opensearch-dashboards:2.17.1
-    container_name: th-opensearch-dashboards
+    container_name: cert-opensearch-dashboards
     environment:
       - 'OPENSEARCH_HOSTS=["http://opensearch:9200"]'
-      # Dashboards também com o security plugin desabilitado (combina com o serviço acima).
+      # Dashboards also with the security plugin disabled (matches the service above).
       - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
     ports:
       - "5601:5601"

@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
-"""Baixa e extrai o CERT Insider Threat Test Dataset (release r4.2) do KiltHub/CMU.
+"""Download and extract the CERT Insider Threat Test Dataset (release r4.2) from KiltHub/CMU.
 
-Obtem os dados reais sobre os quais os exercicios rodam. O script:
+Fetches the real data the analyses run on. The script:
 
-- exibe a referencia da fonte e os termos de uso antes de baixar;
-- baixa r4.2 (~4,8 GB) e o gabarito (answers) para data/, conferindo o MD5;
-- com --extract, descompacta de forma INCREMENTAL: verifica o que ja foi extraido
-  e extrai apenas os membros que faltam (ex.: so o http.csv), sem refazer o resto.
+- prints the source reference and terms of use before downloading;
+- downloads r4.2 (~4.8 GB) and the answer key to data/, verifying the MD5;
+- with --extract, decompresses INCREMENTALLY: it checks what has already been
+  extracted and extracts only the missing members (e.g. just http.csv), without
+  redoing the rest.
 
-Download inteligente: se o .tar.bz2 ja existe e o MD5 confere, nao baixa de novo.
-Se o tarball nao estiver presente e for preciso extrair algo que falta, o script
-baixa o tarball automaticamente.
+Smart download: if the .tar.bz2 already exists and its MD5 matches, it is not
+downloaded again. If the tarball is absent and something missing must be
+extracted, the script downloads the tarball automatically.
 
-Usa a stdlib (urllib) para o download. A extracao usa o `tar` do sistema (lida
-com .tar.bz2 multi-stream).
+Uses the stdlib (urllib) for the download. Extraction uses the system `tar`
+(which handles multi-stream .tar.bz2).
 
-Uso:
-    python scripts/download_cert.py --dry-run     # so mostra fonte/termos/destino
-    python scripts/download_cert.py               # baixa r4.2 + answers (se faltarem)
-    python scripts/download_cert.py --extract      # garante tudo extraido (incremental)
-    python scripts/download_cert.py --extract --force-extract  # re-extrai tudo
+Usage:
+    python scripts/download_cert.py --dry-run     # only show source/terms/destination
+    python scripts/download_cert.py               # download r4.2 + answers (if missing)
+    python scripts/download_cert.py --extract      # ensure everything is extracted (incremental)
+    python scripts/download_cert.py --extract --force-extract  # re-extract everything
 """
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ KILTHUB_ARTICLE_URL = (
     "https://kilthub.cmu.edu/articles/dataset/Insider_Threat_Test_Dataset/12841247"
 )
 
-ARQUIVOS = {
+ARCHIVES = {
     "r4.2.tar.bz2": {
         "url": "https://ndownloader.figshare.com/files/24856766",
         "md5": "cf64caa378acb77cd0c608a5576d998c",
@@ -49,17 +50,17 @@ ARQUIVOS = {
     },
 }
 
-# Membros esperados apos a extracao, por tarball. Cada entrada mapeia o caminho
-# do membro dentro do tar -> caminho relativo verificado em data/.
-# A extracao e feita por membro, extraindo so o que falta.
-MEMBROS = {
+# Members expected after extraction, per tarball. Each entry is the member path
+# inside the tar, which is also the relative path checked under data/.
+# Extraction is done per member, extracting only what is missing.
+MEMBERS = {
     "r4.2.tar.bz2": [
         "r4.2/logon.csv",
         "r4.2/device.csv",
         "r4.2/file.csv",
         "r4.2/email.csv",
         "r4.2/http.csv",
-        "r4.2/LDAP",          # diretorio (snapshots mensais)
+        "r4.2/LDAP",          # directory (monthly snapshots)
         "r4.2/license.txt",
     ],
     "answers.tar.bz2": [
@@ -67,191 +68,191 @@ MEMBROS = {
     ],
 }
 
-_USER_AGENT = "threat-hunting-lab/1.0 (+https://github.com/nilsonsangy/threat-hunting)"
+_USER_AGENT = "insider-threat-cert/1.0 (+https://github.com/nilsonsangy/insider-threat-cert)"
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _DATA = _REPO_ROOT / "data"
 _CHUNK = 1024 * 1024
 
 
-def _print_referencia_e_termos(destino: Path) -> None:
+def _print_reference_and_terms(destination: Path) -> None:
     print("=" * 72)
-    print("CERT Insider Threat Test Dataset — release r4.2")
+    print("CERT Insider Threat Test Dataset - release r4.2")
     print("=" * 72)
     print()
-    print("FONTE / REFERENCIA (cite ao usar os dados):")
+    print("SOURCE / REFERENCE (cite when using the data):")
     print("  Lindauer, B. (2020). Insider Threat Test Dataset. Carnegie Mellon")
     print("  University (CERT Division). DOI 10.1184/R1/12841247.")
     print(f"  {KILTHUB_ARTICLE_URL}")
     print("  Glasser, J.; Lindauer, B. (2013). Bridging the Gap: A Pragmatic")
     print("  Approach to Generating Insider Threat Data. IEEE S&P Workshops.")
     print()
-    print("TERMOS DE USO:")
-    print("  - Dados sinteticos gerados pela ExactData, LLC (c) 2011 sob acordo")
-    print("    com a CMU/SEI; veja a licenca inclusa no dataset (r4.2/license.txt).")
-    print("    Uso para pesquisa/educacao; nao redistribua os arquivos de teste.")
+    print("TERMS OF USE:")
+    print("  - Synthetic data generated by ExactData, LLC (c) 2011 under agreement")
+    print("    with CMU/SEI; see the license included in the dataset (r4.2/license.txt).")
+    print("    Use for research/education; do not redistribute the test files.")
     print()
-    print(f"Destino do download/extracao: {destino}")
+    print(f"Download/extraction destination: {destination}")
     print("=" * 72)
     print()
 
 
-def _erro(msg: str, code: int = 1) -> int:
-    print(f"ERRO: {msg}", file=sys.stderr)
+def _error(msg: str, code: int = 1) -> int:
+    print(f"ERROR: {msg}", file=sys.stderr)
     return code
 
 
-def _md5(caminho: Path) -> str:
+def _md5(path: Path) -> str:
     h = hashlib.md5()
-    with caminho.open("rb") as fh:
-        for bloco in iter(lambda: fh.read(_CHUNK), b""):
-            h.update(bloco)
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(_CHUNK), b""):
+            h.update(block)
     return h.hexdigest()
 
 
-def _membro_presente(membro: str, destino: Path) -> bool:
-    """True se o membro ja foi extraido (arquivo nao-vazio ou diretorio populado)."""
-    alvo = destino / membro
-    if alvo.is_dir():
-        return any(alvo.iterdir())
-    return alvo.is_file() and alvo.stat().st_size > 0
+def _member_present(member: str, destination: Path) -> bool:
+    """True if the member was already extracted (non-empty file or populated directory)."""
+    target = destination / member
+    if target.is_dir():
+        return any(target.iterdir())
+    return target.is_file() and target.stat().st_size > 0
 
 
-def _faltantes(tarball: str, destino: Path) -> list[str]:
-    """Lista os membros esperados daquele tarball que ainda nao foram extraidos."""
-    return [m for m in MEMBROS[tarball] if not _membro_presente(m, destino)]
+def _missing(tarball: str, destination: Path) -> list[str]:
+    """List the expected members of that tarball that are not yet extracted."""
+    return [m for m in MEMBERS[tarball] if not _member_present(m, destination)]
 
 
-def _baixar_um(nome: str, info: dict, destino: Path) -> int:
-    alvo = destino / nome
-    if alvo.exists() and _md5(alvo) == info["md5"]:
-        print(f"{nome}: ja presente e integro (pulando download).")
+def _download_one(name: str, info: dict, destination: Path) -> int:
+    target = destination / name
+    if target.exists() and _md5(target) == info["md5"]:
+        print(f"{name}: already present and intact (skipping download).")
         return 0
     url = info["url"]
-    parcial = alvo.with_suffix(alvo.suffix + ".part")
+    partial = target.with_suffix(target.suffix + ".part")
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-    print(f"Baixando {nome} (~{info['size_gb']} GB)...")
+    print(f"Downloading {name} (~{info['size_gb']} GB)...")
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp, parcial.open("wb") as out:
+        with urllib.request.urlopen(req, timeout=120) as resp, partial.open("wb") as out:
             total = resp.headers.get("Content-Length")
             total_int = int(total) if total and total.isdigit() else None
-            baixado = 0
+            downloaded = 0
             while True:
-                bloco = resp.read(_CHUNK)
-                if not bloco:
+                block = resp.read(_CHUNK)
+                if not block:
                     break
-                out.write(bloco)
-                baixado += len(bloco)
-                mb = baixado / (1024 * 1024)
+                out.write(block)
+                downloaded += len(block)
+                mb = downloaded / (1024 * 1024)
                 if total_int:
-                    print(f"\r  {mb:8.1f} MiB ({100.0*baixado/total_int:5.1f}%)", end="", flush=True)
+                    print(f"\r  {mb:8.1f} MiB ({100.0*downloaded/total_int:5.1f}%)", end="", flush=True)
                 else:
                     print(f"\r  {mb:8.1f} MiB", end="", flush=True)
             print()
     except urllib.error.HTTPError as exc:
-        _limpar(parcial)
-        return _erro(f"falha HTTP ao baixar {nome}: {exc.code} {exc.reason}.")
+        _cleanup(partial)
+        return _error(f"HTTP failure downloading {name}: {exc.code} {exc.reason}.")
     except urllib.error.URLError as exc:
-        _limpar(parcial)
-        return _erro(f"falha de rede ao baixar {nome}: {exc.reason}.")
+        _cleanup(partial)
+        return _error(f"network failure downloading {name}: {exc.reason}.")
     except TimeoutError:
-        _limpar(parcial)
-        return _erro(f"tempo esgotado ao baixar {nome}.")
+        _cleanup(partial)
+        return _error(f"timed out downloading {name}.")
     except OSError as exc:
-        _limpar(parcial)
-        return _erro(f"falha de I/O ao gravar {parcial}: {exc}.")
-    digest = _md5(parcial)
+        _cleanup(partial)
+        return _error(f"I/O failure writing {partial}: {exc}.")
+    digest = _md5(partial)
     if digest != info["md5"]:
-        _limpar(parcial)
-        return _erro(f"MD5 de {nome} divergente ({digest} != {info['md5']}).")
-    parcial.replace(alvo)
-    print(f"{nome}: OK (MD5 {digest}).")
+        _cleanup(partial)
+        return _error(f"MD5 mismatch for {name} ({digest} != {info['md5']}).")
+    partial.replace(target)
+    print(f"{name}: OK (MD5 {digest}).")
     return 0
 
 
-def _limpar(parcial: Path) -> None:
+def _cleanup(partial: Path) -> None:
     try:
-        parcial.unlink()
+        partial.unlink()
     except OSError:
         pass
 
 
-def _extrair_membros(tarball: str, membros: list[str], destino: Path) -> int:
-    """Extrai apenas os membros indicados do tarball (tar do sistema)."""
-    alvo = destino / tarball
-    if not alvo.exists():
-        return _erro(f"{tarball} ausente para extrair {membros}. Baixe primeiro.")
-    print(f"Extraindo de {tarball}: {', '.join(membros)} (pode levar varios minutos)...")
+def _extract_members(tarball: str, members: list[str], destination: Path) -> int:
+    """Extract only the given members from the tarball (system tar)."""
+    target = destination / tarball
+    if not target.exists():
+        return _error(f"{tarball} is missing, cannot extract {members}. Download it first.")
+    print(f"Extracting from {tarball}: {', '.join(members)} (may take several minutes)...")
     try:
-        subprocess.run(["tar", "-xjf", str(alvo), *membros], cwd=destino, check=True)
+        subprocess.run(["tar", "-xjf", str(target), *members], cwd=destination, check=True)
     except FileNotFoundError:
-        return _erro("comando 'tar' nao encontrado no sistema.")
+        return _error("'tar' command not found on this system.")
     except subprocess.CalledProcessError as exc:
-        return _erro(f"falha ao extrair de {tarball}: codigo {exc.returncode}.")
+        return _error(f"failed to extract from {tarball}: exit code {exc.returncode}.")
     return 0
 
 
-def _garantir_extracao(destino: Path, *, force: bool) -> int:
-    """Extracao incremental: extrai so os membros que faltam de cada tarball."""
-    for tarball, info in ARQUIVOS.items():
-        faltam = MEMBROS[tarball] if force else _faltantes(tarball, destino)
-        if not faltam:
-            print(f"{tarball}: tudo ja extraido (nada a fazer).")
+def _ensure_extraction(destination: Path, *, force: bool) -> int:
+    """Incremental extraction: extract only the members missing from each tarball."""
+    for tarball, info in ARCHIVES.items():
+        missing = MEMBERS[tarball] if force else _missing(tarball, destination)
+        if not missing:
+            print(f"{tarball}: everything already extracted (nothing to do).")
             continue
-        # precisa do tarball em disco para extrair os faltantes
-        if not (destino / tarball).exists():
-            print(f"{tarball}: ausente no disco; baixando para extrair os faltantes...")
-            rc = _baixar_um(tarball, info, destino)
+        # The tarball must be on disk to extract the missing members.
+        if not (destination / tarball).exists():
+            print(f"{tarball}: not on disk; downloading it to extract the missing members...")
+            rc = _download_one(tarball, info, destination)
             if rc != 0:
                 return rc
-        rc = _extrair_membros(tarball, faltam, destino)
+        rc = _extract_members(tarball, missing, destination)
         if rc != 0:
             return rc
-        ainda = _faltantes(tarball, destino)
-        if ainda:
-            return _erro(f"apos extrair, ainda faltam membros de {tarball}: {ainda}")
-        print(f"{tarball}: extracao completa.")
+        still_missing = _missing(tarball, destination)
+        if still_missing:
+            return _error(f"after extraction, members of {tarball} are still missing: {still_missing}")
+        print(f"{tarball}: extraction complete.")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         prog="download_cert.py",
-        description="Baixa e extrai (incremental) o CERT Insider Threat Test Dataset r4.2.",
+        description="Download and extract (incrementally) the CERT Insider Threat Test Dataset r4.2.",
     )
     p.add_argument("--dry-run", action="store_true",
-                   help="So mostra a fonte, os termos e o estado atual.")
+                   help="Only show the source, terms and current state.")
     p.add_argument("--extract", action="store_true",
-                   help="Garante tudo extraido, baixando/extraindo so o que falta.")
+                   help="Ensure everything is extracted, downloading/extracting only what is missing.")
     p.add_argument("--force-extract", action="store_true",
-                   help="Re-extrai todos os membros, mesmo os ja presentes.")
+                   help="Re-extract all members, even those already present.")
     args = p.parse_args(argv)
 
     _DATA.mkdir(parents=True, exist_ok=True)
-    _print_referencia_e_termos(_DATA)
+    _print_reference_and_terms(_DATA)
 
-    # Mostra o estado atual da extracao (util para o usuario saber o que falta).
-    for tarball in ARQUIVOS:
-        faltam = _faltantes(tarball, _DATA)
-        if faltam:
-            print(f"{tarball}: faltam {len(faltam)} membro(s): {', '.join(faltam)}")
+    # Show the current extraction state (so the user knows what is missing).
+    for tarball in ARCHIVES:
+        missing = _missing(tarball, _DATA)
+        if missing:
+            print(f"{tarball}: {len(missing)} member(s) missing: {', '.join(missing)}")
         else:
-            print(f"{tarball}: todos os membros ja extraidos.")
+            print(f"{tarball}: all members already extracted.")
     print()
 
     if args.dry_run:
-        print("[--dry-run] Nenhum download/extracao realizado.")
+        print("[--dry-run] No download/extraction performed.")
         return 0
 
     if args.extract or args.force_extract:
-        return _garantir_extracao(_DATA, force=args.force_extract)
+        return _ensure_extraction(_DATA, force=args.force_extract)
 
-    # Sem --extract: apenas garante os tarballs baixados.
-    for nome, info in ARQUIVOS.items():
-        rc = _baixar_um(nome, info, _DATA)
+    # Without --extract: only ensure the tarballs are downloaded.
+    for name, info in ARCHIVES.items():
+        rc = _download_one(name, info, _DATA)
         if rc != 0:
             return rc
     print()
-    print("Tarballs prontos. Rode com --extract para descompactar (incremental).")
+    print("Tarballs ready. Run with --extract to decompress (incremental).")
     return 0
 
 

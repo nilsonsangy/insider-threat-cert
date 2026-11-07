@@ -1,52 +1,55 @@
-# Ingestão das fontes no OpenSearch (opcional)
+# Ingesting the sources into OpenSearch (optional)
 
-Passo a passo para subir OpenSearch + OpenSearch Dashboards e explorar os dados do
-CERT r4.2 visualmente. É um caminho **opcional e isolado**: os exercícios e os
-testes rodam sem ele, e nada em `exercises/` ou `tests/` o utiliza.
+Step-by-step guide to start OpenSearch + OpenSearch Dashboards and explore the
+CERT r4.2 data visually. This is an **optional, isolated** path: the analyses and
+tests run without it, and nothing in `analyses/` or `tests/` uses it.
 
-## Pré-requisitos
+## Prerequisites
 
-- O dataset já baixado e extraído (`data/r4.2/` presente). Veja o README principal.
-- Memória suficiente para o OpenSearch (o serviço usa `-Xms512m -Xmx512m`). Em
-  Linux pode ser preciso `sudo sysctl -w vm.max_map_count=262144`.
+- The dataset already downloaded and extracted (`data/r4.2/` present). See the
+  main README.
+- Enough memory for OpenSearch (the service uses `-Xms512m -Xmx512m` in the env
+  file and `2g` in `docker-compose.yml`). On Linux you may need
+  `sudo sysctl -w vm.max_map_count=262144`.
 
-## 1. Subir o OpenSearch + Dashboards
+## 1. Start OpenSearch + Dashboards
 
-Os serviços ficam sob o profile `opensearch`, então o `up` padrão não os sobe:
+The services live under the `opensearch` profile, so the default `up` does not
+start them:
 
 ```powershell
 docker compose --profile opensearch up -d
 ```
 
-Aguarde a porta `9200` responder:
+Wait for port `9200` to respond:
 
 ```powershell
 curl http://localhost:9200
 ```
 
-## 2. Ingerir as fontes
+## 2. Ingest the sources
 
-O script cria um índice por fonte (`th-logon`, `th-device`, `th-file`,
-`th-email`, `th-http`) e indexa via API `_bulk`. De dentro da rede do compose, o
-host é `opensearch:9200`:
+The script creates one index per source (`cert-logon`, `cert-device`,
+`cert-file`, `cert-email`, `cert-http`) and indexes through the `_bulk` API.
+From inside the compose network, the host is `opensearch:9200`:
 
 ```powershell
-docker compose run --rm lab python scripts/ingest_opensearch.py --host opensearch:9200
+docker compose run --rm app python scripts/ingest_opensearch.py --host opensearch:9200
 ```
 
-Opções: `--limite N` (linhas por fonte de atividade) e `--http-amostra N` (linhas
-do http). Como o dataset é grande, o ingest usa recortes por padrão.
+The full dataset is ingested (all 28M HTTP requests included), which takes a while for `http.csv`. Use `--only SOURCE` to ingest a single source, for example `--only logon`.
 
-## 3. Explorar no Dashboards
+## 3. Explore in Dashboards
 
-Abra `http://localhost:5601`. Em **Dashboards Management → Index patterns**, crie
-`th-*` com `date` como campo de tempo e explore em **Discover**. Exemplos:
+Open `http://localhost:5601`. Under **Dashboards Management → Index patterns**,
+create `cert-*` with `date` as the time field and explore in **Discover**.
+Examples:
 
-- `url: *indeed* OR url: *dropbox*` no `th-http` → navegação suspeita.
-- `activity: Connect` no `th-device` → conexões de USB.
-- `th-file` → cópias de arquivo (correlacione com `th-device` por usuário/hora).
+- `url: *indeed* OR url: *dropbox*` on `cert-http` → suspicious browsing.
+- `activity: Connect` on `cert-device` → USB connections.
+- `cert-file` → file copies (correlate with `cert-device` by user/time).
 
-## 4. Encerrar
+## 4. Shut down
 
 ```powershell
 docker compose --profile opensearch down -v
