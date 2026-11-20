@@ -112,6 +112,13 @@ Useful options:
 - `--only logon,http` ingests only the listed targets (`logon`, `device`,
   `file`, `email`, `http`, `copy-daily`, `risk`).
 - `--recreate` deletes the selected indices before creating them again.
+- `--resume` continues an interrupted load. Every row is stored with its CSV `id`
+  as `_id`, and a checkpoint with the byte offset of the last confirmed batch is
+  written to `data/.ingest-<source>.json`. The script jumps straight to the first
+  row not yet stored, checks that the row before it is stored and the row at it
+  is not, and sends the rest as `create`, so no row is sent twice.
+- `--start-row N` starts a single source (`--only http`) at data row `N`, with
+  the same checks.
 
 The ingestion creates five event indices (`cert-logon`, `cert-device`,
 `cert-file`, `cert-email`, `cert-http`) with derived fields (`off_hours`,

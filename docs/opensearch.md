@@ -45,6 +45,8 @@ the longest step.
 |---|---|
 | `--only logon,http` | Ingests only the listed targets: `logon`, `device`, `file`, `email`, `http`, `copy-daily`, `risk`. |
 | `--recreate` | Deletes the selected indices before creating them again. Required to apply a new mapping over indices created earlier. |
+| `--resume` | Continues an interrupted load from the last confirmed batch (checkpoint `data/.ingest-<source>.json` with the byte offset). Without a checkpoint, the start is the number of stored documents, located by a fast newline count. The row before the start must be stored and the row at it must not be; the rest is sent as `create`, which never overwrites a document. No row is sent twice. |
+| `--start-row N` | Starts one source (`--only <source>`) at data row `N` (0-based), with the same checks as `--resume`. |
 | `--host HOST:PORT` | Overrides `OPENSEARCH_HOST` (default `localhost:9200`). |
 | `--batch N` | `_bulk` batch size (default 10000). |
 

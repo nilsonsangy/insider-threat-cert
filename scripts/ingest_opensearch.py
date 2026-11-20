@@ -142,15 +142,39 @@ def _finalize_index(base, index):
 
 
 def _send_bulk(base, index, ndjson_lines):
+    """Send one _bulk request. Returns the number of documents that already existed.
+
+    A ``create`` action on an existing ``_id`` returns a 409 conflict: the stored
+    document is kept untouched and the conflict is counted, not raised.
+    """
     body = ("".join(ndjson_lines)).encode("utf-8")
     _status, resp = _request("POST", base + "/_bulk", data=body,
                              content_type="application/x-ndjson")
     payload = json.loads(resp)
+    existing = 0
     if payload.get("errors"):
         for item in payload.get("items", []):
             action = next(iter(item.values()))
-            if action.get("error"):
-                raise RuntimeError(f"OpenSearch rejected a document in '{index}': {action['error']}")
+            error = action.get("error")
+            if not error:
+                continue
+            if action.get("status") == 409:
+                existing += 1
+                continue
+            raise RuntimeError(f"OpenSearch rejected a document in '{index}': {error}")
+    return existing
+
+
+def _stored_count(base, index) -> int:
+    """Refresh ``index`` and return how many documents it holds (0 if it does not exist)."""
+    try:
+        _request("POST", base + "/" + index + "/_refresh")
+        _status, resp = _request("GET", base + "/" + index + "/_count")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return 0
+        raise
+    return int(json.loads(resp).get("count", 0))
 
 
 def _build_context(data_dir: Path | None = None) -> EnrichContext:
@@ -161,46 +185,181 @@ def _build_context(data_dir: Path | None = None) -> EnrichContext:
     return EnrichContext(roles=roles, host_category=host_category)
 
 
-def _index_streaming(base, name, columns, path, ctx, *, batch=10000, recreate=False):
+_CHUNK = 64 * 1024 * 1024
+
+
+def _checkpoint_path(name) -> Path:
+    """Checkpoint of the last confirmed batch, kept in the (unversioned) data folder."""
+    return _loaders.data_root() / f".ingest-{name}.json"
+
+
+def _read_checkpoint(name, path) -> dict | None:
+    cp = _checkpoint_path(name)
+    if not cp.is_file():
+        return None
+    try:
+        data = json.loads(cp.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    st = path.stat()
+    if data.get("size") != st.st_size or data.get("mtime") != int(st.st_mtime):
+        return None  # the CSV changed: the stored offset is no longer valid
+    return data
+
+
+def _write_checkpoint(name, path, offset, rows) -> None:
+    st = path.stat()
+    data = {"source": name, "offset": offset, "rows": rows,
+            "size": st.st_size, "mtime": int(st.st_mtime)}
+    _checkpoint_path(name).write_text(json.dumps(data), encoding="utf-8")
+
+
+def _offset_of_row(path, row) -> int:
+    """Byte offset where data row ``row`` (0-based, header excluded) starts.
+
+    Counts newlines in large binary blocks, without parsing the CSV, so it costs
+    a few seconds even for the 14 GB http.csv. It assumes one physical line per
+    row; the caller confirms the result against the stored documents.
+    """
+    target = row + 1  # the header is line 0
+    seen = 0
+    pos = 0
+    with open(path, "rb") as fh:
+        while True:
+            block = fh.read(_CHUNK)
+            if not block:
+                break
+            n = block.count(b"\n")
+            if seen + n >= target:
+                start = 0
+                for _ in range(target - seen):
+                    start = block.index(b"\n", start) + 1
+                return pos + start
+            seen += n
+            pos += len(block)
+    return pos
+
+
+def _rows_from(path, offset):
+    """Yield ``(row, end_offset)`` from ``offset`` on, reading the file in binary.
+
+    A line with an unbalanced quote is joined with the next ones, so a quoted
+    field with an embedded newline stays in one row.
+    """
+    with open(path, "rb") as fh:
+        header = next(csv.reader([fh.readline().decode("utf-8")]))
+        if offset:
+            fh.seek(offset)
+        pending = b""
+        for line in fh:
+            pending += line
+            if pending.count(b'"') % 2:
+                continue
+            text = pending.decode("utf-8").rstrip("\r\n")
+            pending = b""
+            values = next(csv.reader([text]), [])
+            yield dict(zip(header, values)), fh.tell()
+
+
+def _first_id_at(path, offset) -> str | None:
+    for row, _end in _rows_from(path, offset):
+        return row.get("id") or None
+    return None
+
+
+def _stored(base, index, doc_id) -> bool:
+    try:
+        _request("GET", base + "/" + index + "/_doc/" + urllib.request.quote(doc_id, safe=""))
+        return True
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return False
+        raise
+
+
+def _resume_point(base, index, name, path, start_row):
+    """Return ``(offset, rows_before)`` for a resumed load, or raise if unsafe.
+
+    Uses the checkpoint when it exists; otherwise ``start_row`` or, by default,
+    the number of stored documents. The row right before the start must be
+    stored and the row at the start must not be.
+    """
+    cp = _read_checkpoint(name, path) if start_row is None else None
+    if cp:
+        offset, rows = cp["offset"], cp["rows"]
+        print(f"    {name}: checkpoint found, {rows} rows confirmed.", flush=True)
+        prev_id = None
+    else:
+        rows = start_row if start_row is not None else _stored_count(base, index)
+        if rows == 0:
+            return 0, 0
+        # One newline count: the row before the start, then the start right after it.
+        before = _offset_of_row(path, rows - 1)
+        prev_id, offset = None, before
+        for row, end in _rows_from(path, before):
+            prev_id, offset = row.get("id") or None, end
+            break
+        print(f"    {name}: starting at row {rows} (byte {offset}).", flush=True)
+    next_id = _first_id_at(path, offset)
+    if prev_id is not None and not _stored(base, index, prev_id):
+        raise RuntimeError(f"row {rows - 1} ({prev_id}) is not stored: the start point is wrong.")
+    if next_id is not None and _stored(base, index, next_id):
+        raise RuntimeError(f"row {rows} ({next_id}) is already stored: the start point is wrong.")
+    return offset, rows
+
+
+def _index_streaming(base, name, columns, path, ctx, *, batch=10000, recreate=False,
+                     resume=False, start_row=None):
     index = _INDEX_PREFIX + name
     _create_index(base, name, recreate=recreate)
     keep = [c for c in columns if c not in DISCARD]
 
+    # Resume: jump straight to the first row that is not stored (byte offset from
+    # the checkpoint or from a fast newline count) and send the rest as
+    # ``create``, which never overwrites a stored document. No row is sent twice.
+    offset, already = (0, 0)
+    if resume or start_row is not None:
+        offset, already = _resume_point(base, index, name, path, start_row)
+    op = "create" if (resume or start_row is not None) else "index"
+
     total = 0
     skipped = 0
+    existing = 0
     buffer: list[str] = []
-    with open(path, "r", encoding="utf-8", newline="") as fh:
-        reader = csv.DictReader(fh)
-        for row in reader:
-            doc = {c: row.get(c, "") for c in keep}
-            iso = _iso_date(doc.get("date", ""))
-            if iso is None:
-                # A row without a valid date cannot be placed on the time axis.
-                skipped += 1
-                continue
-            doc["date"] = iso
-            doc = enrich_row(index, doc, ctx)
-            # Deterministic _id = the unique CERT row id. Ingestion is idempotent:
-            # re-indexing the same row overwrites it, so a load can be resumed.
-            doc_id = row.get("id") or None
-            action = {"_index": index}
-            if doc_id:
-                action["_id"] = doc_id
-            buffer.append(json.dumps({"index": action}) + "\n")
-            buffer.append(json.dumps(doc, ensure_ascii=False) + "\n")
-            total += 1
-            if len(buffer) >= batch * 2:
-                _send_bulk(base, index, buffer)
-                buffer.clear()
-                if total % 100000 == 0:
-                    print(f"    {name}: {total} docs...", flush=True)
+    last_end = offset
+    for row, end in _rows_from(path, offset):
+        last_end = end
+        doc = {c: row.get(c, "") for c in keep}
+        iso = _iso_date(doc.get("date", ""))
+        if iso is None:
+            # A row without a valid date cannot be placed on the time axis.
+            skipped += 1
+            continue
+        doc["date"] = iso
+        doc = enrich_row(index, doc, ctx)
+        # Deterministic _id = the unique CERT row id.
+        doc_id = row.get("id") or None
+        action = {"_index": index}
+        if doc_id:
+            action["_id"] = doc_id
+        buffer.append(json.dumps({op: action}) + "\n")
+        buffer.append(json.dumps(doc, ensure_ascii=False) + "\n")
+        total += 1
+        if len(buffer) >= batch * 2:
+            existing += _send_bulk(base, index, buffer)
+            buffer.clear()
+            _write_checkpoint(name, path, last_end, already + total)
+            if (already + total) % 100000 == 0:
+                print(f"    {name}: {already + total} docs...", flush=True)
     if buffer:
-        _send_bulk(base, index, buffer)
+        existing += _send_bulk(base, index, buffer)
+        _write_checkpoint(name, path, last_end, already + total)
     _finalize_index(base, index)
     if skipped:
         print(f"    {name}: {skipped} rows skipped (invalid date).", file=sys.stderr)
-    return total
-
+    if existing:
+        print(f"    {name}: {existing} rows were already stored and were left untouched.")
+    return total - existing
 
 # Hooks for the derived indices. Each receives (base, args) and returns the
 # number of documents indexed.
@@ -334,7 +493,7 @@ def _parse_only(value: str | None) -> list[str] | None:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="ingest_opensearch.py",
-                                description="Ingest the r4.2 sources into OpenSearch (the full dataset).")
+                                description="Ingest the r4.2 sources into OpenSearch.")
     p.add_argument("--host", default=_env.get("OPENSEARCH_HOST", _DEFAULT_HOST),
                    help="OpenSearch host:port (default: OPENSEARCH_HOST or localhost:9200).")
     p.add_argument("--batch", type=int, default=10000, help="_bulk batch size.")
@@ -343,7 +502,15 @@ def main(argv=None) -> int:
                         "copy-daily, risk (e.g. --only http,risk).")
     p.add_argument("--recreate", action="store_true",
                    help="Delete the selected indices before creating them again.")
+    p.add_argument("--resume", action="store_true",
+                   help="Continue an interrupted load from the last confirmed batch "
+                        "(checkpoint in data/), never sending a stored row again.")
+    p.add_argument("--start-row", type=int, default=None, metavar="N",
+                   help="Start at data row N (0-based) of a single source, given with --only.")
     args = p.parse_args(argv)
+    if (args.resume or args.start_row is not None) and args.recreate:
+        print("ERROR: --resume/--start-row and --recreate cannot be used together.", file=sys.stderr)
+        return 2
 
     try:
         only = _parse_only(args.only)
@@ -363,6 +530,10 @@ def main(argv=None) -> int:
     selected = only if only is not None else list(SOURCES) + list(DERIVED)
     sources = [n for n in selected if n in SOURCES]
     derived = [n for n in selected if n in DERIVED]
+    if args.start_row is not None and len(sources) != 1:
+        print("ERROR: --start-row needs exactly one source in --only (e.g. --only http).",
+              file=sys.stderr)
+        return 2
 
     data_dir = _loaders.data_root() / f"r{_loaders.RELEASE}"
     if not (data_dir / "logon.csv").is_file():
@@ -385,7 +556,8 @@ def main(argv=None) -> int:
             continue
         print("  " + _INDEX_PREFIX + name + ": indexing everything...")
         n = _index_streaming(base, name, SOURCES[name], path, ctx,
-                             batch=args.batch, recreate=args.recreate)
+                             batch=args.batch, recreate=args.recreate, resume=args.resume,
+                             start_row=args.start_row)
         grand_total += n
         print("  " + _INDEX_PREFIX + name + ": " + str(n) + " docs.")
 
