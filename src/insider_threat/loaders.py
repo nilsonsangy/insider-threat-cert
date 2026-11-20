@@ -1,7 +1,7 @@
 """insider_threat.loaders: loading the CERT Insider Threat Dataset (r4.2) sources.
 
-Loads the full activity sources, LDAP data and the official answer key from
-``data/`` (where the real dataset is downloaded and extracted by
+Loads the activity sources, LDAP data and the official answer key from
+``data/`` (where the CERT r4.2 files are downloaded and extracted by
 ``scripts/download_cert.py``). Expected layout after extraction:
 
     data/
@@ -16,7 +16,7 @@ Loads the full activity sources, LDAP data and the official answer key from
       answers/
         insiders.csv         dataset,scenario,details,user,start,end
 
-Every function reads the complete files; there are no row limits or samples.
+Every function reads the complete files.
 The free-text ``content`` column (synthetic document/e-mail/page bodies) is not
 used by any analysis, so it is skipped at read time to keep memory low.
 ``http.csv`` is too large to hold in memory comfortably and is exposed as a

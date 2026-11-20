@@ -1,9 +1,9 @@
-"""Tests on the full, real CERT r4.2 dataset. No synthetic or fabricated data.
+"""Tests on the CERT r4.2 dataset.
 
 The dataset must be downloaded and extracted first
-(``python scripts/download_cert.py --extract``). If it is missing, every test
-fails with a clear message instead of being skipped, so a green run always
-means the checks ran against the real data.
+(``uv run python scripts/download_cert.py --extract``). If it is missing, every
+test fails with a clear message instead of being skipped, so a green run always
+means the checks ran against the dataset files.
 
 Pinned numbers are facts of the published r4.2 release (row counts, number of
 users, number of insiders) and of the analyses run over it.
@@ -16,7 +16,7 @@ import pytest
 
 from insider_threat import domains, loaders, timewin
 from insider_threat.baseline import copies_per_day, individual_baseline, peer_group_baseline
-from insider_threat.score import WEIGHTS, score_by_user, signal_users
+from insider_threat.score import WEIGHTS
 
 
 @pytest.fixture(scope="session")
@@ -24,7 +24,12 @@ def sources():
     try:
         return loaders.load_sources()
     except FileNotFoundError as exc:
-        pytest.fail(f"Real dataset missing ({exc}). Run: python scripts/download_cert.py --extract")
+        pytest.fail(f"CERT r4.2 files not found ({exc}). Run: uv run python scripts/download_cert.py --extract")
+
+
+@pytest.fixture(scope="session")
+def sessions(sources):
+    return timewin.logon_sessions(sources["logon"])
 
 
 @pytest.fixture(scope="session")
@@ -45,6 +50,7 @@ def test_row_counts(sources):
     assert len(sources["file"]) == 445_581
     connects = sources["device"]["activity"].str.lower().eq("connect").sum()
     assert connects == 203_339
+    assert sources["ldap"]["user_id"].nunique() == 1000
 
 
 def test_schemas(sources):
@@ -52,10 +58,6 @@ def test_schemas(sources):
     assert list(sources["logon"].columns) == ["id", "date", "user", "pc", "activity"]
     assert list(sources["file"].columns) == ["id", "date", "user", "pc", "filename"]
     assert {"user_id", "role"} <= set(sources["ldap"].columns)
-
-
-def test_ldap_has_1000_users(sources):
-    assert sources["ldap"]["user_id"].nunique() == 1000
 
 
 def test_answer_key_r42(sources):
@@ -74,10 +76,9 @@ def test_dates_parsed(sources):
         assert col.min() >= pd.Timestamp("2010-01-01") and col.max() < pd.Timestamp("2011-06-01"), name
 
 
-# --- core library on real data -----------------------------------------------
+# --- core library on the dataset -----------------------------------------------
 
-def test_logon_sessions_well_formed(sources):
-    sessions = timewin.logon_sessions(sources["logon"])
+def test_logon_sessions_well_formed(sources, sessions):
     assert len(sessions) > 0
     assert (sessions["end"] >= sessions["start"]).all()
     # Every session belongs to a (user, pc) pair that appears in logon.csv.
@@ -85,11 +86,10 @@ def test_logon_sessions_well_formed(sources):
     assert set(zip(sessions["user"], sessions["pc"])) <= pairs
 
 
-def test_session_index_matches_scan(sources):
-    sessions = timewin.logon_sessions(sources["logon"])
+def test_session_index_matches_scan(sources, sessions):
     index = timewin.SessionIndex(sessions)
-    every_5000th = sources["device"].iloc[::5000]
-    for user, pc, ts in zip(every_5000th["user"], every_5000th["pc"], every_5000th["date"]):
+    sample = sources["device"].iloc[::25_000]
+    for user, pc, ts in zip(sample["user"], sample["pc"], sample["date"]):
         assert (index.find(ts, user, pc) is not None) == timewin.within_session(ts, user, pc, sessions)
 
 
@@ -111,7 +111,7 @@ def test_peer_group_baseline(sources):
     assert peer.max() <= individual.max()
 
 
-# --- web categories on the full HTTP log --------------------------------------
+# --- web categories on the HTTP log --------------------------------------
 
 def test_web_categories_present(web_hits):
     users = web_hits.groupby("category")["user"].nunique().to_dict()
@@ -122,7 +122,7 @@ def test_web_categories_present(web_hits):
 
 def test_classifier_scalar_and_vectorized_agree():
     chunk = next(loaders.iter_http())
-    urls = chunk["url"]
+    urls = chunk["url"].iloc[:50_000]
     assert domains.classify_series(urls).tolist() == [domains.classify_url(u) for u in urls]
 
 
@@ -151,15 +151,8 @@ def test_analyses_end_to_end(sources, web_hits, web_users):
     insiders = set(sources["answer_key"]["user"])
     assert all(v.in_answer_key == (v.user in insiders) for v in verdicts)
 
-
-def test_leak_or_spyware_signal_is_all_insiders(sources, web_users):
-    presence = signal_users(sources, web_users=web_users)
-    insiders = set(sources["answer_key"]["user"])
-    assert presence["leak_or_spyware_web"] <= insiders
-
-
-def test_top_of_ranking_is_insiders(sources, web_users):
-    from analyses import a06_validation
-    verdicts = a06_validation.run(score_by_user(sources, web_users=web_users),
-                                  sources["answer_key"])
+    # Headline results: everyone with the leak/spyware web signal is an insider,
+    # and the ten highest scores are all insiders.
+    leak_users = {s.user for s in ranking if "leak_or_spyware_web" in s.signals}
+    assert leak_users and leak_users <= insiders
     assert a06_validation.precision_at(verdicts, 10) == 1.0

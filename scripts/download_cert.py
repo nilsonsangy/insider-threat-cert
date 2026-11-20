@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Download and extract the CERT Insider Threat Test Dataset (release r4.2) from KiltHub/CMU.
 
-Fetches the real data the analyses run on. The script:
+Fetches the data the analyses run on. The script:
 
 - prints the source reference and terms of use before downloading;
 - downloads r4.2 (~4.8 GB) and the answer key to data/, verifying the MD5;

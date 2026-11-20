@@ -9,6 +9,7 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+.hypothesis/
 .ruff_cache/
 .mypy_cache/
 
@@ -24,3 +25,6 @@ dist/
 # Local runs / outputs
 *.log
 .DS_Store
+
+# Local configuration (copy .env.example to .env)
+/.env

@@ -5,7 +5,7 @@ category, visits to job sites, leak sites, personal cloud storage and spyware
 vendors (see ``insider_threat.domains``).
 
 The per-user counts are cached in ``data/derived/web_hits.csv`` (gitignored,
-derived only from the real http.csv) so analyses 5 and 6 can reuse them. The
+derived from http.csv) so analyses 5 and 6 can reuse them. The
 cache is rebuilt automatically when http.csv is newer, or with ``--refresh``.
 """
 
@@ -29,7 +29,7 @@ def _cache_path(data_dir=None):
 
 
 def compute_web_hits(data_dir=None, *, verbose: bool = False) -> pd.DataFrame:
-    """Scan the full http.csv and return visits per (user, category)."""
+    """Scan http.csv and return visits per (user, category)."""
     parts: list[pd.DataFrame] = []
     rows = 0
     t0 = time.time()
@@ -85,7 +85,7 @@ def main(argv: list[str] | None = None) -> None:
     args = p.parse_args(argv)
 
     hits = web_hits(refresh=args.refresh, verbose=True)
-    print("Analysis 1: suspicious web browsing (full http.csv)")
+    print("Analysis 1: suspicious web browsing (http.csv)")
     print("=" * 72)
     for category in _domains.CATEGORIES:
         g = hits[hits["category"] == category]

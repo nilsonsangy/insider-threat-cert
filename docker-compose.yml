@@ -1,70 +1,40 @@
-# docker-compose for the insider-threat-cert project.
-#
-#   docker compose up -d app                   -> start the analysis container (Python/pandas)
-#   docker compose run --rm app ...            -> run a command in the container
-#   docker compose --profile opensearch up -d  -> also start OpenSearch + Dashboards
-#
-# The OpenSearch services live under the `opensearch` profile: the default `up`
-# does NOT start them, and the analyses/tests do not depend on them.
-
+# Local analysis environment: OpenSearch and OpenSearch Dashboards.
+# Usage: copy .env.example to .env, then `docker compose up -d`.
+# Security is disabled for local use only. Do not use this setup in production.
 services:
-  # Default service (Python + pandas). Run commands with
-  # `docker compose run --rm app ...`.
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: insider-threat-cert
-    working_dir: /app
-    # Bind mount of the repository for development (local edits show up in the container).
-    volumes:
-      - .:/app
-      # Anonymous volume keeps the image's .venv on top of the bind mount above.
-      - /app/.venv
-    # No ports: the pandas path is offline.
-    stdin_open: true
-    tty: true
-
-  # ---------------------------------------------------------------------------
-  # OPTIONAL: explore the CSVs visually. Only starts with `--profile opensearch`.
-  # Minimal development setup (single-node, security plugin off).
-  # DO NOT use in production: security is disabled for local convenience.
-  # ---------------------------------------------------------------------------
   opensearch:
-    profiles: ["opensearch"]
-    image: opensearchproject/opensearch:2.17.1
+    image: opensearchproject/opensearch:${OPENSEARCH_VERSION:?copy .env.example to .env}
     container_name: cert-opensearch
     environment:
       - discovery.type=single-node
       - bootstrap.memory_lock=true
-      # Disable the security plugin for easy local access.
       - DISABLE_SECURITY_PLUGIN=true
       - DISABLE_INSTALL_DEMO_CONFIG=true
-      - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
+      - OPENSEARCH_JAVA_OPTS=-Xms${OPENSEARCH_HEAP:?copy .env.example to .env} -Xmx${OPENSEARCH_HEAP:?copy .env.example to .env}
     ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-      nofile:
-        soft: 65536
-        hard: 65536
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
     ports:
-      - "9200:9200"
+      - "${OPENSEARCH_PORT:?copy .env.example to .env}:9200"
     volumes:
       - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
 
   opensearch-dashboards:
-    profiles: ["opensearch"]
-    image: opensearchproject/opensearch-dashboards:2.17.1
+    image: opensearchproject/opensearch-dashboards:${OPENSEARCH_VERSION:?copy .env.example to .env}
     container_name: cert-opensearch-dashboards
     environment:
       - 'OPENSEARCH_HOSTS=["http://opensearch:9200"]'
-      # Dashboards also with the security plugin disabled (matches the service above).
       - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
     ports:
-      - "5601:5601"
+      - "${OPENSEARCH_DASHBOARDS_PORT:?copy .env.example to .env}:5601"
     depends_on:
-      - opensearch
+      opensearch:
+        condition: service_healthy
 
 volumes:
   opensearch-data:

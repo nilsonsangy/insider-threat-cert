@@ -1,8 +1,8 @@
 """Analysis 3: off-hours USB cross-referenced with logon (ATT&CK T1078 + T1052).
 
-USB connections outside work hours that fall inside a real logon session of the
+USB connections outside work hours that fall inside a recorded logon session of the
 same user and machine (strong signal: it was the user themselves, logged in).
-Joins the full device.csv and logon.csv.
+Joins device.csv and logon.csv.
 """
 
 from __future__ import annotations
