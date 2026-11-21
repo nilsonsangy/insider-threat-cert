@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Analysis 5: signal correlation and risk-score ranking.
 
 Sums, per user, an additive score over the signals present in the full dataset
@@ -5,6 +6,9 @@ Sums, per user, an additive score over the signals present in the full dataset
 role baseline, and suspicious browsing from the full HTTP log), producing a
 ranking of the users to investigate first. See ``insider_threat.score`` for the
 weights.
+
+Usage:
+    uv run python scripts/a05_correlation.py [--top N]
 """
 
 from __future__ import annotations
@@ -12,9 +16,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 
-from analyses import a01_web_browsing
-from insider_threat import loaders as _loaders
-from insider_threat.score import SuspectScore, score_by_user
+from insider_threat.score import SuspectScore, load_inputs, score_by_user
 
 __all__ = ["run", "main"]
 
@@ -24,16 +26,9 @@ def run(sources, *, web_users=None, work_hours=(7, 19), copy_factor=3.0) -> list
                          copy_factor=copy_factor)
 
 
-def load_inputs(*, verbose: bool = True):
-    """Load the full sources plus the per-category web users (from the full HTTP log)."""
-    sources = _loaders.load_sources()
-    web_users = a01_web_browsing.web_users_by_category(
-        a01_web_browsing.web_hits(verbose=verbose))
-    return sources, web_users
-
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="python -m analyses.a05_correlation",
+    p = argparse.ArgumentParser(prog="scripts/a05_correlation.py",
                                 description="Analysis 5: correlation and risk score.")
     p.add_argument("--top", type=int, default=25)
     args = p.parse_args(argv)

@@ -1,8 +1,12 @@
+#!/usr/bin/env python3
 """Analysis 3: off-hours USB cross-referenced with logon (ATT&CK T1078 + T1052).
 
 USB connections outside work hours that fall inside a recorded logon session of the
 same user and machine (strong signal: it was the user themselves, logged in).
 Joins device.csv and logon.csv.
+
+Usage:
+    uv run python scripts/a03_off_hours_usb.py [--work-hours 7-19] [--top N]
 """
 
 from __future__ import annotations
@@ -57,7 +61,7 @@ def run(sources: dict[str, pd.DataFrame], work_hours=(7, 19)) -> list[OffHoursUS
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="python -m analyses.a03_off_hours_usb",
+    p = argparse.ArgumentParser(prog="scripts/a03_off_hours_usb.py",
                                 description="Analysis 3 (T1078+T1052): off-hours USB x logon.")
     p.add_argument("--work-hours", type=parse_work_hours, default=(7, 19), metavar="START-END")
     p.add_argument("--top", type=int, default=20, help="How many users to display.")

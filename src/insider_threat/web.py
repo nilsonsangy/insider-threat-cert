@@ -1,17 +1,16 @@
-"""Analysis 1: suspicious web browsing (ATT&CK T1567).
+"""insider_threat.web: suspicious web browsing per user and category (CERT r4.2).
 
 Streams every row of the r4.2 http.csv (28M requests) and counts, per user and
 category, visits to job sites, leak sites, personal cloud storage and spyware
 vendors (see ``insider_threat.domains``).
 
 The per-user counts are cached in ``data/derived/web_hits.csv`` (gitignored,
-derived from http.csv) so analyses 5 and 6 can reuse them. The
-cache is rebuilt automatically when http.csv is newer, or with ``--refresh``.
+derived from http.csv), so every caller reuses the same scan. The cache is
+rebuilt when http.csv is newer, or with ``refresh=True``.
 """
 
 from __future__ import annotations
 
-import argparse
 import time
 
 import pandas as pd
@@ -19,7 +18,7 @@ import pandas as pd
 from insider_threat import domains as _domains
 from insider_threat import loaders as _loaders
 
-__all__ = ["web_hits", "web_users_by_category", "main"]
+__all__ = ["compute_web_hits", "web_hits", "web_users_by_category", "load_web_users"]
 
 _COLUMNS = ["user", "category", "visits", "first_visit"]
 
@@ -76,25 +75,7 @@ def web_users_by_category(hits: pd.DataFrame) -> dict[str, set[str]]:
     return {c: set(g["user"]) for c, g in hits.groupby("category")}
 
 
-def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="python -m analyses.a01_web_browsing",
-                                description="Analysis 1 (T1567): suspicious web browsing.")
-    p.add_argument("--refresh", action="store_true",
-                   help="Rescan http.csv even if the cached result is fresh.")
-    p.add_argument("--top", type=int, default=10, help="Users to display per category.")
-    args = p.parse_args(argv)
-
-    hits = web_hits(refresh=args.refresh, verbose=True)
-    print("Analysis 1: suspicious web browsing (http.csv)")
-    print("=" * 72)
-    for category in _domains.CATEGORIES:
-        g = hits[hits["category"] == category]
-        print(f"\n[{category}] {g['user'].nunique()} users, {int(g['visits'].sum()):,} visits "
-              f"({', '.join(_domains.CATEGORIES[category][:4])}...)")
-        print(f"  {'user':<10} {'visits':>8}  first visit")
-        for r in g.head(args.top).itertuples(index=False):
-            print(f"  {r.user:<10} {r.visits:>8}  {r.first_visit:%Y-%m-%d %H:%M}")
-
-
-if __name__ == "__main__":
-    main()
+def load_web_users(data_dir=None, *, refresh: bool = False,
+                   verbose: bool = False) -> dict[str, set[str]]:
+    """Users per web category, from the (cached) scan of http.csv."""
+    return web_users_by_category(web_hits(data_dir, refresh=refresh, verbose=verbose))

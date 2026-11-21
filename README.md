@@ -1,28 +1,110 @@
-# Insider Threat: CERT Insider Threat Test Dataset (r4.2) Analysis
+<div align="center">
 
-A reproducible analysis of the CERT Insider Threat Test Dataset (release r4.2).
-The repository provides a chain of seven detection analyses, from suspicious
-web browsing to a correlated per-user risk score, validated against the
-official insider answer key. It also provides a local OpenSearch and
-OpenSearch Dashboards environment to explore the same data interactively.
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0f2027,50:203a43,100:2c5364&height=210&section=header&text=Insider%20Threat%20CERT&fontSize=52&fontColor=ffffff&animation=fadeIn&fontAlignY=36&desc=Reproducible%20analysis%20of%20the%20CERT%20Insider%20Threat%20Test%20Dataset%20r4.2&descAlignY=58&descSize=17" alt="Insider Threat CERT" width="100%" />
 
-## Dataset
+<a href="#-quick-start">
+  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=21&pause=1100&color=36BCF7&center=true&vCenter=true&width=720&lines=Insider+threat+detection+on+CERT+r4.2;Seven+chained+analyses+%E2%86%92+one+risk+score;Validated+against+the+official+answer+key;OpenSearch+%2B+Dashboards+lab+in+one+command" alt="Insider threat detection on CERT r4.2" />
+</a>
+
+<br />
+
+<img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.12+" />
+<img src="https://img.shields.io/badge/uv-managed-DE5FE9?style=for-the-badge&logo=uv&logoColor=white" alt="uv" />
+<img src="https://img.shields.io/badge/OpenSearch-2.17.1-005EB8?style=for-the-badge&logo=opensearch&logoColor=white" alt="OpenSearch 2.17.1" />
+<img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker Compose" />
+<br />
+<img src="https://img.shields.io/badge/Dataset-CERT%20r4.2-8A2BE2?style=for-the-badge" alt="Dataset CERT r4.2" />
+<img src="https://img.shields.io/badge/MITRE-ATT%26CK-C8102E?style=for-the-badge" alt="MITRE ATT&CK" />
+<img src="https://img.shields.io/badge/tests-pytest-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white" alt="pytest" />
+<img src="https://img.shields.io/badge/License-MIT-2EA043?style=for-the-badge" alt="MIT License" />
+
+<br /><br />
+
+**[Quick start](#-quick-start)** ·
+**[How it works](#-how-it-works)** ·
+**[Dataset](#-dataset)** ·
+**[OpenSearch](#-opensearch-and-dashboards)** ·
+**[Analyses](#-analyses)** ·
+**[Results](#-results)** ·
+**[Support](#-support-the-project)**
+
+</div>
+
+---
+
+## 🔎 About
+
+A reproducible analysis of the **CERT Insider Threat Test Dataset (release r4.2)**.
+Seven detection analyses go from suspicious web browsing to a correlated
+per-user risk score, validated against the official insider answer key. A local
+**OpenSearch + OpenSearch Dashboards** environment exposes the same data for
+interactive investigation, with derived fields and ready-made risk indices.
+
+<div align="center">
+
+| 👥 Users | 🕵️ Insiders | 🌐 Web requests | 📧 E-mails | 🔌 USB connections | 🎯 precision@10 |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| **1,000** | **70** | **28.4 M** | **2.6 M** | **203 K** | **100 %** |
+
+</div>
+
+## 🧭 How it works
+
+```mermaid
+flowchart LR
+    A[(CERT r4.2<br/>CSV files)] --> B[download_cert.py<br/>MD5-verified]
+    B --> C[insider_threat<br/>library]
+    C --> D[a01 .. a07<br/>analysis scripts]
+    C --> E[ingest_opensearch.py]
+    D --> F{{Risk score<br/>per user}}
+    F --> G[Validation<br/>vs. answer key]
+    E --> H[(OpenSearch<br/>7 indices)]
+    H --> I[Dashboards<br/>Discover · Visualize]
+```
+
+The library in `src/insider_threat/` holds every rule (work hours, sessions,
+web categories, baselines, score), so the analysis scripts and the OpenSearch
+indices compute exactly the same signals.
+
+## 🚀 Quick start
+
+> [!NOTE]
+> The full dataset needs about **25 GB** of free disk (4.6 GB download, about
+> 15.5 GB extracted) and Docker with at least **4 GB** of memory for OpenSearch.
+
+```bash
+git clone https://github.com/nilsonsangy/insider-threat-cert.git
+cd insider-threat-cert
+cp .env.example .env                               # Windows PowerShell: Copy-Item .env.example .env
+uv sync                                            # creates .venv and installs the dependencies
+uv run python scripts/download_cert.py --extract   # dataset into data/
+uv run python scripts/a06_validation.py            # ranking validated against the answer key
+docker compose up -d                               # OpenSearch on :9200, Dashboards on :5601
+uv run python scripts/ingest_opensearch.py         # about 55 minutes, 8.4 GB of indices
+```
+
+<details>
+<summary><b>📦 Installing uv</b></summary>
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"   # Windows PowerShell
+```
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh                                     # Linux and macOS
+```
+
+`uv sync` creates the `.venv` directory in the repository root. Every command
+runs inside it through `uv run`, with no manual activation. Docker Compose and
+the scripts read the same `.env` file.
+
+</details>
+
+## 📚 Dataset
 
 The CERT Insider Threat Test Dataset (r4.2) was generated by the CERT Division
 of the Software Engineering Institute (Carnegie Mellon University) in
 partnership with ExactData, LLC. Background activity and the malicious actors
-are synthetic, and three insider scenarios are injected (Glasser and Lindauer,
-2013).
-
-- **Source:** *Insider Threat Test Dataset*, Carnegie Mellon University,
-  distributed on KiltHub:
-  <https://kilthub.cmu.edu/articles/dataset/Insider_Threat_Test_Dataset/12841247>
-  (DOI 10.1184/R1/12841247).
-- **Reference:** Glasser, J.; Lindauer, B. *Bridging the Gap: A Pragmatic
-  Approach to Generating Insider Threat Data*. IEEE Security and Privacy
-  Workshops, 2013.
-- **Mirror:** <https://www.kaggle.com/datasets/andrihjonior/cert-insider-threat-dataset-r4-2>.
-  The download script uses the KiltHub source and verifies MD5 checksums.
+are synthetic, and three insider scenarios are injected.
 
 | Source | Content | Size |
 |---|---|---|
@@ -34,144 +116,134 @@ are synthetic, and three insider scenarios are injected (Glasser and Lindauer,
 | `LDAP/` | 18 monthly snapshots, 1,000 users with role and department | small |
 | `answers/insiders.csv` | Answer key: 70 r4.2 insiders in 3 scenarios (30 / 30 / 10) | small |
 
-The r4.2 scenarios, as described by CERT:
+<table>
+<tr>
+<td width="33%" valign="top">
 
-1. A user who did not work after hours starts logging on after hours, uses a
-   removable drive and uploads data to wikileaks.org, then leaves.
-2. A user starts browsing job sites and soliciting employment from a
-   competitor, and before leaving copies data to a thumb drive at a markedly
-   higher rate than before.
-3. A system administrator downloads a keylogger, uses a thumb drive to install
-   it on a supervisor's machine, and uses the captured credentials to send a
-   mass e-mail.
+### 1️⃣ Leak
+A user who did not work after hours starts logging on after hours, uses a
+removable drive and uploads data to **wikileaks.org**, then leaves.
 
-## Prerequisites
+</td>
+<td width="33%" valign="top">
 
-- **Docker** with Docker Compose v2 (at least 4 GB of memory for OpenSearch).
-- **[uv](https://docs.astral.sh/uv/)**, which installs Python 3.12+ and the
-  dependencies.
-- About 25 GB of free disk space (4.6 GB download, about 15.5 GB extracted).
+### 2️⃣ Departure
+A user browses **job sites**, solicits employment from a competitor and,
+before leaving, copies data to a thumb drive at a markedly higher rate.
 
-## Setup
+</td>
+<td width="33%" valign="top">
 
-```bash
-git clone https://github.com/nilsonsangy/insider-threat-cert.git
-cd insider-threat-cert
-```
+### 3️⃣ Sabotage
+A system administrator installs a **keylogger** on a supervisor's machine and
+uses the captured credentials to send a **mass e-mail**.
 
-Copy the environment template. Docker Compose and the scripts read the same
-`.env` file.
-
-```powershell
-Copy-Item .env.example .env       # Windows PowerShell
-```
-```bash
-cp .env.example .env              # Linux and macOS
-```
-
-Install uv.
-
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"   # Windows PowerShell
-```
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh   # Linux and macOS
-```
-
-Create the virtual environment and install the dependencies.
+</td>
+</tr>
+</table>
 
 ```bash
-uv sync
-```
-
-`uv sync` creates the `.venv` directory in the repository root. Every command
-below runs inside it through `uv run`, with no manual activation.
-
-## Download the dataset
-
-```bash
-# show the source, terms of use and what is missing
-uv run python scripts/download_cert.py --dry-run
-
-# download (about 4.6 GB, MD5-verified) and extract incrementally
-uv run python scripts/download_cert.py --extract
+uv run python scripts/download_cert.py --dry-run    # source, terms of use and what is missing
+uv run python scripts/download_cert.py --extract    # download (MD5-verified) and extract incrementally
 ```
 
 The CSV files land in `data/r4.2/` and the answer key in `data/answers/`. The
-`data/` directory is ignored by Git.
+`data/` folder is ignored by Git and created by the download script.
 
-## Ingest into OpenSearch
+- **Source:** *Insider Threat Test Dataset*, Carnegie Mellon University, on
+  KiltHub: <https://kilthub.cmu.edu/articles/dataset/Insider_Threat_Test_Dataset/12841247>
+  (DOI 10.1184/R1/12841247).
+- **Reference:** Glasser, J.; Lindauer, B. *Bridging the Gap: A Pragmatic
+  Approach to Generating Insider Threat Data*. IEEE Security and Privacy
+  Workshops, 2013.
+- **Mirror:** <https://www.kaggle.com/datasets/andrihjonior/cert-insider-threat-dataset-r4-2>.
+  The download script uses the KiltHub source and verifies MD5 checksums.
+
+## 🗄️ OpenSearch and Dashboards
 
 ```bash
 docker compose up -d
 uv run python scripts/ingest_opensearch.py
 ```
 
-Useful options:
+| Option | Effect |
+|---|---|
+| `--only logon,http` | Ingests only the listed targets (`logon`, `device`, `file`, `email`, `http`, `copy-daily`, `risk`). |
+| `--recreate` | Deletes the selected indices before creating them again. |
+| `--resume` | Continues an interrupted load from the last confirmed batch. |
+| `--start-row N` | Starts one source (`--only http`) at data row `N`. |
 
-- `--only logon,http` ingests only the listed targets (`logon`, `device`,
-  `file`, `email`, `http`, `copy-daily`, `risk`).
-- `--recreate` deletes the selected indices before creating them again.
-- `--resume` continues an interrupted load. Every row is stored with its CSV `id`
-  as `_id`, and a checkpoint with the byte offset of the last confirmed batch is
-  written to `data/.ingest-<source>.json`. The script jumps straight to the first
-  row not yet stored, checks that the row before it is stored and the row at it
-  is not, and sends the rest as `create`, so no row is sent twice.
-- `--start-row N` starts a single source (`--only http`) at data row `N`, with
-  the same checks.
+> [!TIP]
+> **Interrupted load? Nothing is sent twice.** Every row is stored with its CSV
+> `id` as `_id`, and a checkpoint with the byte offset of the last confirmed
+> batch is written to `data/.ingest-<source>.json`. `--resume` jumps straight to
+> the first row not yet stored, checks that the row before it is stored and the
+> row at it is not, and sends the rest as `create`, which never overwrites a
+> document.
 
 The ingestion creates five event indices (`cert-logon`, `cert-device`,
 `cert-file`, `cert-email`, `cert-http`) with derived fields (`off_hours`,
 `role`, `recipients`, `domain`, `category`) and two derived indices:
 `cert-copy-daily` (file copies per user and day) and `cert-risk` (one document
-per user with the five signals and the score). Details are in
-[docs/opensearch.md](./docs/opensearch.md).
+per user with the five signals and the score).
 
-## Explore in Dashboards
+Then open <http://localhost:5601>, set `dateFormat:tz` to `UTC` in
+**Dashboards Management → Advanced settings**, create the index pattern
+`cert-*` with `date` as the time field, and query in **Discover** with DQL:
 
-Open <http://localhost:5601>. In **Dashboards Management → Advanced settings**,
-set `dateFormat:tz` to `UTC`. Then create the index patterns (`cert-*` or one
-per index, with `date` as the time field), query in **Discover**, build
-**Visualize** charts and group them in **Dashboards**. Query examples and the
-field reference are in [docs/opensearch.md](./docs/opensearch.md).
-
-## Analyses
-
-Seven analyses, each tied to a MITRE ATT&CK technique where applicable:
-
-| # | Analysis | Insider signal | ATT&CK |
-|---|---|---|---|
-| 1 | Suspicious web browsing | job sites, leak sites, cloud storage, spyware vendors | T1567 |
-| 2 | USB exfiltration | file copies made while a USB device is connected | T1052 |
-| 3 | Off-hours USB x logon | off-hours USB connection inside the user's own session | T1078 + T1052 |
-| 4 | File copies vs. baseline | copy volume above 3x the peer-group (role) norm | T1052 |
-| 5 | Correlation and risk score | signals combined into an additive score per user | T1052 / T1567 / T1078 |
-| 6 | Validation | ranking and each signal checked against the answer key | n/a |
-| 7 | Mass e-mail | e-mail with 8 or more recipients, correlated with USB connections by other users on the same PC in the previous 48 hours | T1078 |
-
-```bash
-uv run python -m analyses.a01_web_browsing
-uv run python -m analyses.a02_usb_exfiltration
-uv run python -m analyses.a03_off_hours_usb
-uv run python -m analyses.a04_file_copy_baseline
-uv run python -m analyses.a05_correlation
-uv run python -m analyses.a06_validation
-uv run python -m analyses.a07_mass_email
+```text
+user:CSC0217 and activity:Logon
+activity:Connect and off_hours:true
+category:leak_site
+recipients >= 8
 ```
 
-- Analysis 1 streams all 28M HTTP rows (about 2-3 minutes) and caches the
-  per-user counts in `data/derived/web_hits.csv`. Analyses 5, 6 and 7 reuse that
-  cache. It is rebuilt when `http.csv` changes, or on demand with `--refresh`.
-- Analyses 2 to 4 take about 30 seconds each.
-- Analysis 3 accepts custom work hours: `--work-hours 8-18`.
-- Analysis 4 accepts a custom threshold: `--factor 2.5`.
-- Analysis 7 accepts `--min-recipients` and `--window-hours`. With the
-  defaults, it finds 4 messages and 5 USB candidates. Four candidates are
-  insiders of scenario 3 who also visited keylogger vendors. The fifth did not
-  visit any. The criterion covers 4 of the 10 scenario 3 insiders.
+Query examples, the field reference and the visualizations are in
+[docs/opensearch.md](./docs/opensearch.md).
 
-The suspicious-domain lists in `src/insider_threat/domains.py` contain only
-hosts that occur in the r4.2 HTTP log, grouped by what the site is:
+## 🧪 Analyses
+
+Each analysis is a script, run with `uv run python scripts/<name>.py`:
+
+| # | Script | Insider signal | ATT&CK |
+|:---:|---|---|:---:|
+| 1 | `a01_web_browsing.py` | job sites, leak sites, cloud storage, spyware vendors | T1567 |
+| 2 | `a02_usb_exfiltration.py` | file copies made while a USB device is connected | T1052 |
+| 3 | `a03_off_hours_usb.py` | off-hours USB connection inside the user's own session | T1078 + T1052 |
+| 4 | `a04_file_copy_baseline.py` | copy volume above 3x the peer-group (role) norm | T1052 |
+| 5 | `a05_correlation.py` | signals combined into an additive score per user | T1052 / T1567 / T1078 |
+| 6 | `a06_validation.py` | ranking and each signal checked against the answer key | n/a |
+| 7 | `a07_mass_email.py` | e-mail with 8 or more recipients and USB use by another user on the same PC in the previous 48 hours | T1078 |
+
+```bash
+uv run python scripts/a01_web_browsing.py        # about 2-3 min the first time, then cached
+uv run python scripts/a03_off_hours_usb.py --work-hours 8-18
+uv run python scripts/a04_file_copy_baseline.py --factor 2.5
+uv run python scripts/a07_mass_email.py --min-recipients 8 --window-hours 48
+```
+
+<details>
+<summary><b>⚖️ Risk score weights</b></summary>
+
+Weights (`src/insider_threat/score.py`) are fixed a priori by how specific each
+behavior is. They are not fitted to the answer key, which is used only in
+analysis 6.
+
+| Signal | Weight |
+|---|:---:|
+| Logon outside work hours (07h-19h) | +1 |
+| Off-hours USB connection inside the user's own logon session | +2 |
+| Mean copies/day above 3x the role baseline | +3 |
+| Job site or cloud storage browsing (common, weak) | +1 |
+| Leak site or spyware browsing (rare, specific) | +3 |
+
+</details>
+
+<details>
+<summary><b>🌐 Suspicious domain lists</b></summary>
+
+The lists in `src/insider_threat/domains.py` contain only hosts that occur in
+the r4.2 HTTP log, grouped by what the site is:
 
 - `job_site`: careerbuilder, monster, simplyhired, indeed, job-hunt.org,
   jobhuntersbible, taleo
@@ -181,73 +253,75 @@ hosts that occur in the r4.2 HTTP log, grouped by what the site is:
 - `spyware`: keylogger and covert-monitoring vendors (dailykeylogger, refog,
   spectorsoft, and others)
 
-Risk score weights (`src/insider_threat/score.py`) are fixed a priori by how
-specific each behavior is. They are not fitted to the answer key, which is used
-only in analysis 6:
+</details>
 
-| Signal | Weight |
-|---|---|
-| Logon outside work hours (07h-19h) | +1 |
-| Off-hours USB connection inside the user's own logon session | +2 |
-| Mean copies/day above 3x the role baseline | +3 |
-| Job site or cloud storage browsing (common, weak) | +1 |
-| Leak site or spyware browsing (rare, specific) | +3 |
+<details>
+<summary><b>⏱️ Run times and cache</b></summary>
 
-### Results
+- Analysis 1 streams all 28M HTTP rows (about 2-3 minutes) and caches the
+  per-user counts in `data/derived/web_hits.csv`. Analyses 5, 6 and 7 and the
+  `cert-risk` index reuse that cache. It is rebuilt when `http.csv` changes, or
+  on demand with `--refresh`.
+- Analyses 2 to 4 take about 30 seconds each.
+- Analysis 7 finds 4 messages and 5 USB candidates with the defaults. Four
+  candidates are scenario 3 insiders who also visited keylogger vendors. The
+  criterion covers 4 of the 10 scenario 3 insiders.
 
-Output of `uv run python -m analyses.a06_validation` over the complete r4.2
-data:
+</details>
+
+## 📊 Results
+
+Output of `uv run python scripts/a06_validation.py` over the complete r4.2 data:
+
+<div align="center">
+
+| 🎯 precision@10 | 🎯 precision@30 | 🎯 precision@70 | 1️⃣ Scenario 1 | 2️⃣ Scenario 2 | 3️⃣ Scenario 3 |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| **100.0 %** | **76.7 %** | **57.1 %** | **30 / 30** | **0 / 30** | **10 / 10** |
+
+<sub>Scenario columns: insiders of each scenario in the top 70 of the ranking.</sub>
+
+</div>
 
 | Signal | Users flagged | Insiders among them | Precision | Recall |
-|---|---|---|---|---|
+|---|---:|---:|---:|---:|
 | Off-hours logon | 190 | 42 | 22.1% | 60.0% |
 | Off-hours USB in own session | 104 | 42 | 40.4% | 60.0% |
 | Copies above 3x role baseline | 47 | 13 | 27.7% | 18.6% |
 | Job site / cloud storage browsing | 983 | 69 | 7.0% | 98.6% |
 | Leak site / spyware browsing | 40 | 40 | 100.0% | 57.1% |
 
-| Ranking | Value |
-|---|---|
-| precision@10 | 100.0% |
-| precision@30 | 76.7% |
-| precision@70 | 57.1% |
-| Scenario 1 insiders in the top 70 | 30 / 30 |
-| Scenario 2 insiders in the top 70 | 0 / 30 |
-| Scenario 3 insiders in the top 70 | 10 / 10 |
+> [!IMPORTANT]
+> - **Rare, specific behaviors carry the signal.** All 40 users who visited
+>   wikileaks.org or a keylogger vendor are insiders (scenarios 1 and 3).
+> - **Common behaviors are noise on their own.** Job sites and cloud storage are
+>   visited by 983 of the 1,000 users.
+> - **USB is the exfiltration channel.** 441,885 of the 445,581 file copies
+>   (99.2%) happen while a USB device is connected.
+> - **Scenario 2 is not caught (0/30).** Those insiders behave like their peers
+>   in absolute terms; detecting them needs a change-over-time baseline (each
+>   user against their own history).
 
-Observations:
-
-- Rare, specific behaviors carry the signal. All 40 users who visited
-  wikileaks.org or a keylogger vendor are insiders (scenarios 1 and 3).
-- Common behaviors are noise on their own. Job sites and cloud storage are
-  visited by 983 of the 1,000 users, so a presence-based signal cannot separate
-  scenario 2 insiders from the others.
-- USB is the exfiltration channel. 441,885 of the 445,581 file copies (99.2%)
-  happen while a USB device is connected.
-- Scenario 2 is not caught by this model (0/30 in the top 70). Those insiders
-  behave like their peers in absolute terms. Detecting them needs a
-  change-over-time baseline (each user against their own history).
-
-## Tests
+## ✅ Tests
 
 ```bash
 uv run pytest -q
 ```
 
-The tests read the CERT r4.2 files under `data/`. When the files are missing,
-they fail with the download command. They pin facts of the r4.2 release (row
-counts, 1,000 users, 70 insiders) and check the analyses end to end. They do
-not require Docker.
-
-## Shut down
+The tests read the CERT r4.2 files under `data/` and fail with the download
+command when they are missing. They pin facts of the r4.2 release (row counts,
+1,000 users, 70 insiders), check the analyses end to end and include
+property-based tests of the configuration, the recipient count and the derived
+fields. They do not require Docker.
 
 ```bash
-docker compose down -v
+docker compose down -v    # stop OpenSearch and remove the volume with the indices
 ```
 
-The `-v` option removes the volume with the OpenSearch indices.
+## 🗂️ Repository layout
 
-## Repository layout
+<details>
+<summary><b>Show the tree</b></summary>
 
 ```text
 insider-threat-cert/
@@ -257,22 +331,58 @@ insider-threat-cert/
 ├── pyproject.toml / uv.lock  # dependencies, managed by uv
 ├── docker-compose.yml        # OpenSearch and OpenSearch Dashboards
 ├── docs/opensearch.md        # ingestion and Dashboards guide
-├── data/                     # downloaded dataset and derived cache (gitignored)
-├── src/insider_threat/       # core library: loaders, timewin, baseline, score, domains, enrich
-├── analyses/                 # a01..a07
-├── tests/                    # tests over the r4.2 files
-└── scripts/                  # download_cert.py and ingest_opensearch.py
+├── src/insider_threat/       # library, no executables
+│   ├── loaders.py            # reading the CSV sources and the answer key
+│   ├── timewin.py            # work hours and logon sessions
+│   ├── domains.py            # web category of each host
+│   ├── web.py                # visits per user and category (cached scan of http.csv)
+│   ├── baseline.py           # copies per day and per-role baseline
+│   ├── score.py              # signals, weights and risk score
+│   ├── mass_email.py         # recipient count and mass-email criterion
+│   ├── enrich.py             # derived fields added before indexing
+│   ├── env.py                # .env loader
+│   └── opensearch/           # mappings, _bulk, resume, derived indices, ingestion
+├── scripts/                  # everything that is run: uv run python scripts/<name>.py
+│   ├── download_cert.py      # download and extract the dataset
+│   ├── ingest_opensearch.py  # load OpenSearch
+│   └── a01_*.py .. a07_*.py  # the seven analyses
+└── tests/                    # tests over the r4.2 files
 ```
 
-## Data: license and credits
+The `data/` folder (dataset, derived cache and ingestion checkpoints) is
+created by the scripts and ignored by Git.
+
+</details>
+
+## ☕ Support the project
+
+<div align="center">
+
+| 💳 PayPal | 🇧🇷 Pix (Brazil) |
+|:---:|:---:|
+| Support for the project is welcome through PayPal:<br>[**Donate with PayPal**](https://www.paypal.com/donate/?business=7CC3CMJVYYHAC&no_recurring=0&currency_code=BRL)<br><br><img src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=https://www.paypal.com/donate/?business=7CC3CMJVYYHAC%26no_recurring=0%26currency_code=BRL" alt="PayPal QR code" width="140" /> | Donors in Brazil can use Pix:<br>Pix key: `df92ab3c-11e2-4437-a66b-39308f794173`<br><br><img src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=df92ab3c-11e2-4437-a66b-39308f794173" alt="Pix QR code" width="140" /> |
+
+</div>
+
+## 📜 Data license and credits
 
 The dataset is not versioned in this repository. It is downloaded from the
-official source, which respects the dataset's terms of use.
+official source, which respects the dataset's terms of use. It was generated
+by ExactData, LLC (© 2011, all rights reserved) under agreement with CMU/SEI,
+is synthetic by design (no real employees), and has insider scenarios injected
+by CERT. The license included in the dataset (`r4.2/license.txt`) applies to
+the data.
 
-The dataset was generated by ExactData, LLC (© 2011, all rights reserved) under
-agreement with CMU/SEI. It is synthetic by design (no real employees), with
-insider scenarios injected by CERT. The license included in the dataset
-(`r4.2/license.txt`) applies to the data.
+The code is by Nilson Sangy and is under the [MIT license](./LICENSE), which
+covers the code, not the dataset.
 
-The code in this repository is by Nilson Sangy and is under the
-[MIT license](./LICENSE). The MIT license covers the code, not the dataset.
+> [!WARNING]
+> This project is for educational and research purposes. Monitoring real
+> employees requires a legal basis, proportionality and the involvement of HR,
+> Legal and Privacy.
+
+<div align="center">
+
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:2c5364,50:203a43,100:0f2027&height=110&section=footer" alt="" width="100%" />
+
+</div>

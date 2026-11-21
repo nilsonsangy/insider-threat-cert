@@ -1,10 +1,14 @@
+#!/usr/bin/env python3
 """Analysis 6: validation against the official r4.2 insider answer key.
 
-Compares the risk-score ranking (analysis 5) and each individual signal with
+Compares the risk-score ranking (the same as analysis 5) and each individual signal with
 the official CERT answer key (data/answers/insiders.csv, release 4.2: 70
 insiders across 3 scenarios). Reports precision and recall per signal,
 precision at the top of the ranking, and how many insiders of each scenario are
 caught. The answer key is used only here, for evaluation, never for detection.
+
+Usage:
+    uv run python scripts/a06_validation.py [--top N]
 """
 
 from __future__ import annotations
@@ -14,8 +18,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from analyses import a05_correlation
-from insider_threat.score import SuspectScore, signal_users
+from insider_threat.score import SuspectScore, load_inputs, score_by_user, signal_users
 
 __all__ = ["Verdict", "SignalMetrics", "run", "signal_metrics", "precision_at", "main"]
 
@@ -72,15 +75,15 @@ def precision_at(verdicts: list[Verdict], k: int) -> float:
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="python -m analyses.a06_validation",
+    p = argparse.ArgumentParser(prog="scripts/a06_validation.py",
                                 description="Analysis 6: validation against the official answer key.")
     p.add_argument("--top", type=int, default=30)
     args = p.parse_args(argv)
 
-    sources, web_users = a05_correlation.load_inputs()
+    sources, web_users = load_inputs()
     key = sources["answer_key"]
     insiders = _insiders(key)
-    ranking = a05_correlation.run(sources, web_users=web_users)
+    ranking = score_by_user(sources, web_users=web_users)
     verdicts = run(ranking, key)
     presence = signal_users(sources, web_users=web_users)
 

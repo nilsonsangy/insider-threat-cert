@@ -1,7 +1,7 @@
 # OpenSearch and OpenSearch Dashboards
 
 Guide to ingest the CERT r4.2 sources into OpenSearch and explore them in
-OpenSearch Dashboards. The analyses in `analyses/` and the tests do not depend
+OpenSearch Dashboards. The analysis scripts (`scripts/a01_*.py` to `a07_*.py`) and the tests do not depend
 on this path.
 
 ## Prerequisites

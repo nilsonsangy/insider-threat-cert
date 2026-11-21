@@ -105,8 +105,8 @@ def load_source(name: str, data_dir: str | Path | None = None) -> pd.DataFrame:
 def load_ldap(data_dir: str | Path | None = None) -> pd.DataFrame:
     """Load LDAP (monthly folder) as a single per-user DataFrame.
 
-    r4.2 ships one snapshot per month in ``LDAP/YYYY-MM.csv``. We consolidate all
-    of them and keep the most recent record of each ``user_id`` (the role and
+    r4.2 ships one snapshot per month in ``LDAP/YYYY-MM.csv``. All of them are
+    consolidated, keeping the most recent record of each ``user_id`` (the role and
     department in effect when the user was last seen), which is enough to build
     the per-role peer group.
     """

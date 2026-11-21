@@ -3,7 +3,7 @@
 In r4.2, ``file.csv`` records file copies (``id,date,user,pc,filename,content``)
 and has no column indicating removable media. USB exfiltration is inferred by
 correlating a copy with an active USB connection (see
-``analyses.a02_usb_exfiltration``). Here we handle copy volume itself: per day,
+``scripts/a02_usb_exfiltration.py``). This module handles copy volume itself: per day,
 per user, and the per-role baseline (LDAP peer group).
 
 All functions are pure and deterministic (no network I/O).

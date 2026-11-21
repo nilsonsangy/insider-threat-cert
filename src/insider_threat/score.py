@@ -9,9 +9,9 @@ For each user, sums weights for the PRESENCE of each signal type:
     leak site / spyware browsing ........... +3   (rare, specific)
 
 Weights are fixed a priori by how specific each behavior is; they are not fitted
-to the answer key. The web signals come from the full ``http.csv``, which is
-streamed by ``analyses.a01_web_browsing`` and passed in as users per category.
-The other sources come from ``insider_threat.loaders.load_sources``.
+to the answer key. The web signals come from the full ``http.csv``, streamed by
+``insider_threat.web`` and passed in as users per category. The other sources
+come from ``insider_threat.loaders.load_sources``; ``load_inputs`` loads both.
 """
 
 from __future__ import annotations
@@ -21,9 +21,11 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from insider_threat import baseline as _baseline
+from insider_threat import loaders as _loaders
 from insider_threat import timewin as _timewin
+from insider_threat import web as _web
 
-__all__ = ["WEIGHTS", "SuspectScore", "signal_users", "score_by_user"]
+__all__ = ["WEIGHTS", "SuspectScore", "load_inputs", "signal_users", "score_by_user"]
 
 WEIGHTS: dict[str, int] = {
     "off_hours_logon": 1,
@@ -109,3 +111,10 @@ def score_by_user(
         out.append(SuspectScore(user=u, score=sum(signals.values()), signals=signals))
     out.sort(key=lambda s: (-s.score, s.user))
     return out
+
+
+def load_inputs(*, refresh: bool = False, verbose: bool = True):
+    """Load the sources and the users per web category used by the score."""
+    sources = _loaders.load_sources()
+    web_users = _web.load_web_users(refresh=refresh, verbose=verbose)
+    return sources, web_users

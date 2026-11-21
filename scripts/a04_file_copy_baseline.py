@@ -1,9 +1,13 @@
+#!/usr/bin/env python3
 """Analysis 4: file copies vs. peer-group baseline (ATT&CK T1052).
 
 Compares each user's mean daily copy volume against the peer-group baseline
 (median of the per-user means for the same LDAP role). Flags users who exceed
 the role baseline by a factor. The deviation from peers, not the absolute value,
 is what exposes the outlier. Uses the full file.csv.
+
+Usage:
+    uv run python scripts/a04_file_copy_baseline.py [--factor 3] [--top N]
 """
 
 from __future__ import annotations
@@ -47,7 +51,7 @@ def run(sources: dict[str, pd.DataFrame], *, min_factor: float = 3.0) -> list[Co
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="python -m analyses.a04_file_copy_baseline",
+    p = argparse.ArgumentParser(prog="scripts/a04_file_copy_baseline.py",
                                 description="Analysis 4 (T1052): file copies vs. peer-group baseline.")
     p.add_argument("--factor", type=float, default=3.0,
                    help="Minimum factor above the role baseline to flag (default 3x).")

@@ -1,9 +1,13 @@
+#!/usr/bin/env python3
 """Analysis 2: USB exfiltration (ATT&CK T1052).
 
 r4.2 has no "removable media" flag on file events: a file copy is attributed to
 USB when its timestamp falls inside a USB connection window (Connect ->
 Disconnect) of the same user and machine. Joins the full device.csv and
 file.csv.
+
+Usage:
+    uv run python scripts/a02_usb_exfiltration.py [--top N]
 """
 
 from __future__ import annotations
@@ -110,7 +114,7 @@ def run(sources: dict[str, pd.DataFrame], *, work_hours=(7, 19)) -> USBResult:
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="python -m analyses.a02_usb_exfiltration",
+    p = argparse.ArgumentParser(prog="scripts/a02_usb_exfiltration.py",
                                 description="Analysis 2 (T1052): USB exfiltration.")
     p.add_argument("--top", type=int, default=20, help="How many users to display.")
     args = p.parse_args(argv)

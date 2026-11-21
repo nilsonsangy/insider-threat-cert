@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Analysis 7: mass email and USB candidates on the sender's machine.
 
 Selects emails whose recipient count (``to`` + ``cc`` + ``bcc``) reaches a
@@ -7,6 +8,9 @@ cross-checked against the users that visited spyware sites in the full
 ``http.csv`` (the same web signal used by analysis 5).
 
 The risk score of analysis 5 and the numbers of analysis 6 are not affected.
+
+Usage:
+    uv run python scripts/a07_mass_email.py [--min-recipients 8] [--window-hours 48] [--refresh]
 """
 
 from __future__ import annotations
@@ -16,9 +20,9 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from analyses import a01_web_browsing
 from insider_threat import loaders as _loaders
 from insider_threat.mass_email import MASS_EMAIL_MIN_RECIPIENTS, recipient_count
+from insider_threat.web import load_web_users
 
 __all__ = ["UsbCandidate", "MassEmail", "run", "main"]
 
@@ -88,7 +92,7 @@ def run(sources: dict[str, pd.DataFrame], *, web_users: dict[str, set[str]] | No
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(prog="python -m analyses.a07_mass_email",
+    p = argparse.ArgumentParser(prog="scripts/a07_mass_email.py",
                                 description="Analysis 7: mass email and USB candidates.")
     p.add_argument("--min-recipients", type=int, default=MASS_EMAIL_MIN_RECIPIENTS,
                    help="Minimum recipients (to + cc + bcc) of a mass email "
@@ -100,8 +104,7 @@ def main(argv: list[str] | None = None) -> None:
     args = p.parse_args(argv)
 
     sources = _loaders.load_sources()
-    web_users = a01_web_browsing.web_users_by_category(
-        a01_web_browsing.web_hits(refresh=args.refresh, verbose=True))
+    web_users = load_web_users(refresh=args.refresh, verbose=True)
     emails = run(sources, web_users=web_users, min_recipients=args.min_recipients,
                  window_hours=args.window_hours)
 

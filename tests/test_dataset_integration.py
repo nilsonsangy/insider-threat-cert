@@ -34,14 +34,14 @@ def sessions(sources):
 
 @pytest.fixture(scope="session")
 def web_hits():
-    from analyses import a01_web_browsing
-    return a01_web_browsing.web_hits()
+    from insider_threat import web
+    return web.web_hits()
 
 
 @pytest.fixture(scope="session")
 def web_users(web_hits):
-    from analyses import a01_web_browsing
-    return a01_web_browsing.web_users_by_category(web_hits)
+    from insider_threat import web
+    return web.web_users_by_category(web_hits)
 
 
 # --- dataset facts -----------------------------------------------------------
@@ -129,8 +129,12 @@ def test_classifier_scalar_and_vectorized_agree():
 # --- analyses and validation --------------------------------------------------
 
 def test_analyses_end_to_end(sources, web_hits, web_users):
-    from analyses import (a02_usb_exfiltration, a03_off_hours_usb,
-                          a04_file_copy_baseline, a05_correlation, a06_validation)
+    # The analysis scripts in scripts/ are importable as top-level modules (see pyproject).
+    import a02_usb_exfiltration
+    import a03_off_hours_usb
+    import a04_file_copy_baseline
+    import a05_correlation
+    import a06_validation
 
     usb = a02_usb_exfiltration.run(sources)
     assert usb.total_connections == 203_339

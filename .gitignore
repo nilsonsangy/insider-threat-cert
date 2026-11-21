@@ -1,7 +1,7 @@
 # CERT dataset downloaded into data/ - never versioned (ExactData/CMU license).
 # Code and scripts are versioned; the data is NOT.
-/data/*
-!/data/.gitkeep
+# The folder is created by scripts/download_cert.py.
+/data/
 
 # Bytecode and caches
 __pycache__/

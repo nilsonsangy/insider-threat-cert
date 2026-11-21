@@ -4,7 +4,7 @@ from __future__ import annotations
 import pandas as pd
 from hypothesis import given, settings, strategies as st
 
-from analyses import a07_mass_email
+import a07_mass_email  # scripts/ is on the test path (see pyproject)
 from insider_threat.mass_email import (
     MASS_EMAIL_MIN_RECIPIENTS,
     is_mass_email,

@@ -24,6 +24,6 @@ build-backend = "hatchling.build"
 packages = ["src/insider_threat"]
 
 [tool.pytest.ini_options]
-# src/ to import the `insider_threat` package; "." to import the `analyses` package.
-pythonpath = ["src", "."]
+# src/ for the `insider_threat` package; scripts/ for the analysis scripts.
+pythonpath = ["src", "scripts"]
 testpaths = ["tests"]
